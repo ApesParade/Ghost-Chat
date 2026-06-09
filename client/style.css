@@ -1,0 +1,2636 @@
+/* ================================================================
+   GENERALE – COMPONENTI TRASVERSALI
+   ================================================================ */
+
+/* --- RESET E VARIABILI GLOBALI --- */
+/* Variabili CSS globali (tema di default). */
+:root {
+  --bg: #272b2e;
+  --surface: #3a4045;
+  --surface2: #4d555a;
+  --primary: #4db3a6;
+  --primary-hover: #3a8c81;
+  --secondary: #d9577b;
+  --subtitle: #499344;
+  --success: #499344;
+  --success-light: #5cb24e;
+  --success-hover: #3a7535;
+  --danger: #c23b55;
+  --danger-hover: #a8324a;
+  --action: #3a6ea5;
+  --action-hover: #2c478a;
+  --text: #f0f0f0;
+  --text-secondary: #b0b0b0;
+  --bubble-sent-text: #ffffff;
+  --bubble-sent-text-secondary: #d0d0d0;
+  --bubble-received-text: #f0f0f0;
+  --bubble-received-text-secondary: #c0c0c0;
+  --reaction-bg-sent: #2a3a4a;
+  --reaction-bg-received: #2a3a4a;
+  --border: #6a737b;
+  --radius: 12px;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --primary-rgb: 77, 179, 166;
+  --secondary-rgb: 217, 87, 123;
+  --presence-online: #2ecc71;
+  --presence-offline: #888;
+  --shadow-dark-rgb: 0, 0, 0;
+  --shadow-light-rgb: 255, 255, 255;
+  --bg-media-thumbnail: #2f353a;
+  --chat-bg-opacity: 0.9;
+  --chat-bg-image: url('icons/ghost_w_bg.svg');
+  --bg-transparent: transparent;
+  --nav-bg: #272b2e;
+  --toggle-off-bg: var(--border);
+  --toggle-on-bg: var(--presence-online);
+  --contact-border-opacity: 0.5;
+  --tour-color: var(--success-light);
+  --save-outline: 1px solid var(--success-light);
+  --chat-list-bg-opacity: 0.85;
+  --chat-banner-bg-rgb: 18, 20, 22;
+  --chat-banner-bg: #121416;
+}
+
+/* Reset box-sizing e margini per tutti gli elementi. */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Blocca lo scroll sulla finestra html. */
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Corpo della pagina: sfondo, font, layout centrato. */
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+}
+
+/* Contenitore principale dell'app (larghezza max 420px, tipico mobile). */
+#app {
+  width: 100%;
+  max-width: 420px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Schermata (auth, main) – nascosta di default, attiva con classe .active. */
+.screen {
+  display: none;
+  flex-direction: column;
+  height: 100%;
+}
+
+.screen.active {
+  display: flex;
+  overflow: hidden;
+}
+
+/* --- STILI BASE PER ELEMENTI DI FORM E TESTO --- */
+/* Titolo principale (usato in auth). */
+h1 {
+  font-size: 1.8rem;
+  text-align: center;
+  color: var(--primary);
+  margin-top: 20px;
+  margin-bottom: 0;
+}
+
+/* Sottotitolo (usato in auth e altrove). */
+.subtitle {
+  margin-top: 4px;
+  margin-bottom: 24px;
+  font-size: 1rem;
+  color: var(--subtitle);
+}
+
+/* Input di base. */
+input {
+  padding: 10px 0;
+  border-radius: 0;
+  border: none;
+  border-bottom: 2px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 1rem;
+  font-family: inherit;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+/* Select di base. */
+select {
+  padding: 10px 0;
+  border-radius: 0;
+  border: none;
+  border-bottom: 2px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 1rem;
+  font-family: inherit;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+/* Stato focus per input e select. */
+input:focus,
+select:focus {
+  border-bottom-color: var(--primary);
+}
+
+/* Placeholder per input. */
+input::placeholder {
+  color: var(--text-secondary);
+}
+
+/* Checkbox senza stili aggiuntivi. */
+input[type='checkbox'] {
+  width: auto;
+  border: none;
+  padding: 0;
+}
+
+/* Pulsante di base. */
+button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 0;
+  background: var(--primary);
+  color: var(--text);
+  font-size: 1rem;
+  font-family: inherit;
+  width: auto;
+  outline: none;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Link. */
+a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: bold;
+}
+
+/* Paragrafo generico. */
+p {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+/* Testo piccolo (es. hint sotto i campi). */
+small {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  opacity: 0.7;
+}
+
+/* Messaggio di successo (generico). */
+.success {
+  display: none;
+  color: var(--secondary);
+  margin-top: 12px;
+  font-size: 0.9rem;
+}
+
+/* Banner offline (in alto, rosso). */
+#offline-banner {
+  display: none;
+  background: var(--danger);
+  color: var(--text);
+  text-align: center;
+  padding: 5px;
+}
+
+/* Override autofill per evitare sfondo bianco. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+input:-webkit-autofill:focus-visible {
+  -webkit-box-shadow: 0 0 0 1000px var(--surface) inset !important;
+  -webkit-text-fill-color: var(--text) !important;
+  transition: background-color 5000s ease-in-out 0s;
+  caret-color: var(--text);
+}
+
+/* --- AUTENTICAZIONE --- */
+/* Form di login e registrazione (sfondo surface, padding, gap). */
+.auth-form {
+  background: var(--surface);
+  padding: 24px;
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Nasconde il form quando ha classe hidden. */
+.auth-form.hidden {
+  display: none;
+}
+
+/* --- Modale condizioni di utilizzo (terms) --- */
+/* Contenitore testo dei termini (scrollabile, senza barra). */
+.terms-text {
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  scrollbar-width: none;
+}
+
+.terms-text::-webkit-scrollbar {
+  display: none;
+}
+
+/* Riga checkbox di accettazione termini. */
+.terms-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.terms-checkbox-row input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+/* Modale terms fullscreen con layout flessibile. */
+#terms-modal {
+  align-items: stretch;
+  background: rgba(var(--shadow-dark-rgb), 0.95);
+}
+
+#terms-modal .modal {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  border-radius: 0;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  box-sizing: border-box;
+  gap: 16px;
+}
+
+#terms-modal .terms-text {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+#terms-modal .terms-text::-webkit-scrollbar {
+  display: none;
+}
+
+#terms-modal .terms-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#terms-modal .terms-checkbox-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+#terms-modal .terms-checkbox-row input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+#terms-modal .terms-checkbox-row label {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+#terms-modal .terms-hint {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-align: center;
+  margin: 0;
+  padding: 4px 0;
+}
+
+#terms-modal .modal .btn-save {
+  flex: 0 0 auto;
+  width: 100%;
+  height: auto;
+  min-height: 44px;
+  margin-top: 0;
+  pointer-events: auto;
+  line-height: normal;
+  background-color: #60e945;
+  border-color: #60e945;
+  color: #1a1a2e;
+}
+
+#terms-modal .modal .secondary {
+  flex: 0 0 auto;
+  width: 100%;
+  height: auto;
+  min-height: 44px;
+  margin-top: 0;
+  pointer-events: auto;
+  line-height: normal;
+  background-color: var(--danger);
+  border-color: var(--danger);
+  color: white;
+}
+
+/* --- BOTTOM NAVIGATION --- */
+/* Barra di navigazione inferiore fissa. */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  background: var(--nav-bg);
+  z-index: 10;
+  padding: 6px 0 8px;
+  border: none;
+}
+
+/* Singolo pulsante della nav. */
+.nav-btn {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: color 0.2s;
+  min-width: 60px;
+}
+
+/* Pulsante attivo. */
+.nav-btn.active {
+  color: var(--primary-hover);
+}
+
+/* Icona del pulsante. */
+.nav-icon {
+  width: 24px;
+  height: 24px;
+  margin-bottom: 2px;
+  object-fit: contain;
+}
+
+/* Etichetta testuale del pulsante. */
+.nav-label {
+  line-height: 1.2;
+}
+
+/* --- FLOATING ACTION BUTTON (FAB) --- */
+/* Contenitore che racchiude liste contatti, chat, profilo, traduttore. */
+#main-content,
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  padding-bottom: 70px;
+}
+
+/* Pulsante fluttuante "+" per aggiungere chat o contatti. */
+.fab-overlay {
+  position: absolute;
+  bottom: 80px;
+  right: 16px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(var(--primary-rgb), 0.85);
+  color: var(--bubble-sent-text);
+  font-size: 32px;
+  line-height: 56px;
+  text-align: center;
+  cursor: pointer;
+  z-index: 20;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  user-select: none;
+  transition: transform 0.2s;
+}
+
+/* Effetto pressione sul FAB. */
+.fab-overlay:active {
+  transform: scale(0.95);
+}
+
+/* --- MODALI GENERICHE --- */
+/* Overlay scuro dietro la modale. */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(var(--shadow-dark-rgb), 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+/* Nasconde la modale. */
+.modal-overlay.hidden {
+  display: none;
+}
+
+/* Contenuto della modale. */
+.modal {
+  background: var(--surface);
+  padding: 24px;
+  border-radius: var(--radius);
+  width: 90%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Titolo della modale. */
+.modal h3 {
+  text-align: center;
+  color: var(--primary);
+}
+
+/* Contenitore risultati ricerca nelle modali. */
+.search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Pulsante secondario (bordo sottile) usato in modali e altrove. */
+.secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius);
+}
+
+/* Pulsante "Conferma eliminazione" nella modale di conferma. */
+#confirm-delete-ok {
+  border-radius: var(--radius);
+  color: var(--bubble-sent-text);
+}
+
+/* --- COMPONENTI TRASVERSALI --- */
+/* Pallino di presenza (online/offline). */
+.presence-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.presence-dot.online {
+  background: var(--presence-online);
+  box-shadow: 0 0 6px var(--presence-online);
+}
+
+.presence-dot.offline {
+  background: var(--presence-offline);
+}
+
+/* Stato testuale (Online/Offline). */
+.contact-status {
+  font-size: 0.8em;
+  font-weight: bold;
+}
+
+.contact-status.online {
+  color: var(--presence-online);
+}
+
+.contact-status.offline {
+  color: var(--presence-offline);
+}
+
+/* Avatar piccolo (50px) usato nelle liste contatti/chat. */
+.avatar-small {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+
+/* Placeholder avatar (iniziali o icona utente). */
+.avatar-placeholder {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-placeholder svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Riga per nome contatto + ruolo (allineamento). */
+.contact-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+/* Spinner di caricamento. */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--text-secondary);
+  border-top: 2px solid var(--accent-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Toggle Switch (componente riutilizzabile) --- */
+/* Switch base (senza etichetta). */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--toggle-off-bg);
+  transition: 0.3s;
+  border-radius: 26px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: var(--text);
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--toggle-on-bg);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(22px);
+  background-color: var(--bubble-sent-text);
+}
+
+/* Etichetta affiancata al toggle. */
+.toggle-switch-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+/* --- TOUR GUIDATO (overlay e tooltip) --- */
+/* Overlay semitrasparente che copre lo schermo durante il tour. */
+.tour-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(var(--shadow-dark-rgb), 0.65);
+  z-index: 90;
+  pointer-events: none;
+}
+
+/* Tooltip del tour (box con testo e pulsanti). */
+.tour-tooltip {
+  position: fixed;
+  z-index: 95;
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 16px 20px;
+  max-width: 320px;
+  min-width: 260px;
+  box-shadow: 0 4px 12px rgba(var(--shadow-dark-rgb), 0.5);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  outline: 2px solid #FFEF00;
+}
+
+/* Testo del tooltip. */
+.tour-tooltip .tour-text {
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  text-align: left;
+}
+
+/* Contenitore pulsanti. */
+.tour-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Pulsante Avanti/Fine. */
+.tour-btn-next {
+  background: var(--success);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* Pulsante Salta. */
+.tour-btn-skip {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* Clone di highlight per l'elemento target del tour. */
+.tour-highlight {
+  position: fixed;
+  z-index: 91;
+  pointer-events: none;
+  border-radius: 8px;
+  box-shadow: 0 0 0 4px #FFEF00, 0 0 0 8px rgba(255, 239, 0, 0.3);
+}
+
+/* --- ADMIN PANEL (gestione utenti e richieste) --- */
+
+/* Contenitore principale del pannello admin */
+.admin-panel {
+  display: none;
+  flex-direction: column;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 16px 0 20px 0;
+  box-sizing: border-box;
+}
+
+/* Assicura il box sizing per il pannello (override) */
+#admin-requests-panel {
+  box-sizing: border-box;
+}
+
+/* Intestazione del pannello (freccia + titolo) */
+.admin-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  margin-bottom: 24px;
+}
+
+/* Titolo centrato nel pannello */
+.admin-panel-title {
+  margin: 0;
+  color: var(--primary);
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 500;
+}
+
+/* Elemento placeholder per bilanciare la larghezza nell'header */
+.admin-header-placeholder {
+  width: 30px;
+}
+
+/* Riga superiore alternativa (con h2 e freccia) */
+.admin-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  margin-bottom: 24px;
+}
+
+/* Pulsante freccia indietro nell'header */
+.admin-header-row .btn-back-arrow {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: white;
+  padding: 0;
+}
+
+/* Titolo h2 nell'header alternativo */
+.admin-header-row h2 {
+  margin: 0;
+  color: var(--primary);
+  text-align: center;
+}
+
+/* Spaziatore laterale per bilanciare */
+.admin-header-spacer {
+  width: 30px;
+}
+
+/* Riga contenente campo di ricerca e toggle "Pending only" */
+.admin-search-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  margin-bottom: 24px;
+}
+
+/* Campo di input per la ricerca utenti */
+.admin-search-input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* Etichetta per il toggle "Pending only" */
+.admin-pending-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Riga contenente i tre pulsanti principali (Force, Notifica, Notify All) */
+.admin-buttons-row {
+  display: flex;
+  gap: 12px;
+  padding: 0 16px;
+  margin-bottom: 24px;
+}
+
+/* Stile base per i pulsanti azione admin (larghezza uniforme) */
+.admin-action-btn {
+  flex: 1;
+  text-align: center;
+  padding: 8px 0;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  min-height: 38px;
+  line-height: 1.2;
+}
+
+/* Contenitore della lista utenti */
+.admin-users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 16px;
+}
+
+/* Lista delle richieste admin (nascita scrollbar) */
+#admin-requests-list {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#admin-requests-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* Banner di un singolo utente nella lista */
+.admin-user-item {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 8px 12px;
+  margin-bottom: 0;
+  transition: background 0.2s;
+  border: 2px solid var(--primary);
+}
+
+/* Stato selezionato per il banner (selezione multipla) */
+.admin-user-item.selected {
+  background: var(--surface);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+  opacity: 0.9;
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+}
+
+/* Intestazione del banner utente (nome + azioni) */
+.admin-user-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+/* Nome utente nel banner */
+.admin-user-username {
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+/* Contenitore delle azioni (flag, toggle, eventuali pulsanti) */
+.admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Etichetta del toggle di attivazione utente */
+.admin-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+/* Bandiera della lingua dell'utente */
+.user-flag {
+  font-size: 1.3rem;
+  margin-right: 8px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Textarea per le note admin (una riga di altezza, espandibile) */
+.admin-note {
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  resize: vertical;
+  min-height: 28px;
+  height: auto;
+  line-height: 1.3;
+  overflow-y: hidden;
+  margin-top: 8px;
+}
+
+/* Focus sulla textarea delle note */
+.admin-note:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+
+/* Pulsante per eliminare un utente (admin) */
+.admin-delete-btn {
+  background: var(--danger, #dc3545);
+  color: white;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  transition: background 0.2s;
+}
+.admin-delete-btn:hover {
+  background: #b02a37;
+}
+
+/* --- Pulsanti specifici del pannello admin --- */
+
+/* Pulsante Force (modalità aggiunta forzata) - outline blu */
+#admin-force-mode-btn {
+  outline: 1px solid #2196f3;
+}
+
+/* Pulsante Force quando attivo (modalità ON) */
+#admin-force-mode-btn.force-mode-active {
+  background: #2e7d32;
+  border: 2px solid #a5d6a7;
+  box-shadow: 0 0 0 2px rgba(46,125,50,0.3);
+}
+
+/* Pulsante Notifica (sola lingua) - outline giallo canarino */
+#admin-notify-same-lang-btn {
+  outline: 1px solid #ffeb3b;
+}
+
+/* Campo di ricerca admin (outline base) */
+#admin-search-input {
+  outline: 1px solid var(--border, #ccc);
+}
+#admin-search-input:focus {
+  outline: 1px solid var(--primary, #007bff);
+}
+
+/* --- Elementi aggiuntivi (barra di selezione, richieste, ecc.) --- */
+
+/* Barra di selezione flottante (per selezione multipla utenti) */
+.admin-selection-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+}
+.admin-selection-bar button {
+  flex: 1;
+}
+
+/* Pulsante outline primary generico (usato altrove) */
+.btn-outline-primary {
+  background: transparent;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+.btn-outline-primary:hover {
+  background: var(--primary);
+  color: white;
+}
+
+/* Singola richiesta nel pannello admin (stile card) */
+.admin-request-item {
+  background: var(--surface2);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Intestazione di una richiesta admin */
+.admin-request-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Nome utente nella richiesta */
+.admin-request-username {
+  font-weight: bold;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+/* --- NOTIFICHE E TOAST --- */
+/* Toast notification (fixed in basso). */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 8px;
+  z-index: 10000;
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  color: white;
+}
+
+.toast-info {
+  background-color: #1976d2;
+}
+
+.toast-success {
+  background-color: #2e7d32;
+}
+
+.toast-error {
+  background-color: #d32f2f;
+}
+
+.toast.show {
+  opacity: 1;
+}
+
+/* Modale notifiche admin. */
+.admin-notification-modal .modal {
+  max-width: 90%;
+  width: 400px;
+}
+
+.admin-notification-modal h3 {
+  color: var(--danger);
+}
+
+.admin-notification-modal p {
+  margin: 16px 0;
+  word-wrap: break-word;
+  color: var(--text-primary);
+}
+
+/* Pulsante Notifica (stessa lingua). */
+.btn-notify-same-lang {
+  padding: 6px 12px;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  background-color: transparent;
+  color: white;
+  border: 1px solid #FFD700;
+  transition: all 0.2s;
+  margin-left: 8px;
+}
+
+.btn-notify-same-lang:hover {
+  background-color: #FFD700;
+  color: #333;
+}
+
+/* ================================================================
+   CHAT
+   ================================================================ */
+
+/* --- Contenitore principale della chat singola --- */
+/* Elemento: <div id="chat-container">. Visualizzato solo quando una chat è aperta. */
+#chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  padding-top: 16px;
+}
+
+/* --- Header della chat --- */
+/* Contiene: pulsante indietro, avatar, nome utente, pulsante clear chat. */
+#chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* Pulsante a freccia per tornare indietro (usato anche in admin). */
+.btn-back-arrow {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 1.8rem;
+  padding: 0 8px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+/* Avatar del contatto nell'header (immagine). */
+#chat-avatar img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Placeholder avatar quando non c'è immagine. */
+#chat-avatar .avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+
+/* Nome utente del contatto nell'header. */
+#chat-username {
+  font-size: 1rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+/* Pulsante "Clear Chat" (cancella tutta la conversazione). */
+.btn-clear-chat-outline {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 12px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, color 0.2s;
+}
+
+/* --- Sfondo e wrapper dei messaggi --- */
+/* Contenitore che racchiude lo sfondo e la lista messaggi. */
+.messages-wrapper {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  margin: 0px 0;
+}
+
+/* Immagine di sfondo della chat (ghost). */
+.messages-wrapper::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: var(--chat-bg-image);
+  background-repeat: repeat;
+  background-size: auto;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Overlay semitrasparente sopra lo sfondo. */
+.messages-wrapper::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--bg);
+  opacity: var(--chat-bg-opacity, 0.5);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* --- Lista messaggi scrollabile --- */
+/* Contenitore dinamico dei messaggi (chat singola e gruppo). */
+.messages-list,
+#group-messages-list {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 12px 12px 12px;
+  scrollbar-width: none;
+  touch-action: pan-y;
+  background: transparent;
+}
+
+/* Ogni figlio diretto della lista ha z-index sopra lo sfondo. */
+.messages-list > *,
+#group-messages-list > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Nasconde la barra di scorrimento (Webkit) nella lista messaggi. */
+.messages-list::-webkit-scrollbar,
+#group-messages-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* --- Messaggio generico (singolo o di gruppo) --- */
+/* Ogni singolo messaggio. */
+.message-item {
+  width: 75%;
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 1rem;
+  word-break: break-word;
+  position: relative;
+  margin: 0 8px;
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+
+/* Messaggio inviato (destra). */
+.message-item.sent {
+  align-self: flex-end;
+  background: var(--primary);
+  color: var(--bubble-sent-text);
+  border-bottom-right-radius: 4px;
+  margin-left: auto;
+}
+
+/* Messaggio ricevuto (sinistra). */
+.message-item.received {
+  align-self: flex-start;
+  background: var(--surface2);
+  color: var(--bubble-received-text);
+  border-bottom-left-radius: 4px;
+  margin-right: auto;
+}
+
+/* Testo del messaggio. */
+.message-item .msg-text {
+  margin-bottom: 2px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Barra inferiore con ora, spunte e azioni. */
+.message-item .msg-meta {
+  font-size: 0.7rem;
+  opacity: 0.7;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Testo originale (per traduzioni). */
+.msg-original {
+  font-size: 0.8em;
+  opacity: 0.8;
+  font-style: italic;
+}
+
+/* Link all'interno dei messaggi. */
+.message-item a {
+  color: inherit;
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+/* Messaggi di sistema (es. entrato nel gruppo). */
+.message-item.system {
+  align-self: center;
+  max-width: 90%;
+  background: var(--surface2);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-align: center;
+  border-radius: 8px;
+  padding: 6px 14px;
+}
+
+/* Etichetta del mittente nei messaggi di gruppo ricevuti. */
+.sender-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* --- Reazioni ai messaggi --- */
+/* Contenitore delle reazioni posizionato sul bordo inferiore. */
+.message-reactions {
+  position: absolute;
+  bottom: -24px;
+  left: 0;
+  right: auto;
+  border-radius: 20px;
+  padding: 4px 12px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  max-width: 70%;
+  z-index: 6;
+  box-shadow: 0 2px 6px rgba(var(--shadow-dark-rgb), 0.3);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.message-reactions::-webkit-scrollbar {
+  display: none;
+}
+
+/* Sfondo per le reazioni sui messaggi inviati. */
+.message-item.sent .message-reactions {
+  background: var(--bg);
+}
+
+/* Sfondo per le reazioni sui messaggi ricevuti. */
+.message-item.received .message-reactions {
+  background: var(--bg);
+}
+
+/* Badge di una reazione (emoji + conteggio). */
+.reaction-badge {
+  font-size: 1.2rem;
+  line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+}
+
+/* --- Menu emoji (reazioni rapide) --- */
+/* Menu contestuale per aggiungere reazioni a un messaggio ricevuto. */
+.emoji-menu {
+  position: fixed;
+  z-index: 50;
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(var(--shadow-dark-rgb), 0.5);
+  max-width: calc(100vw - 24px);
+  min-width: 320px;
+  width: fit-content;
+}
+
+/* Singola opzione emoji nel menu. */
+.emoji-option {
+  font-size: 1.5em;
+  cursor: pointer;
+  transition: transform 0.1s;
+  user-select: none;
+}
+
+.emoji-option:hover {
+  transform: scale(1.3);
+}
+
+/* --- Input e controlli della chat --- */
+/* Contenitore dei controlli di input (textarea + pulsanti). */
+.chat-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+/* Area di testo per scrivere messaggi. */
+.chat-textarea,
+#group-text-input {
+  width: 100%;
+  min-height: 40px;
+  max-height: 160px;
+  padding: 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  resize: none;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.4;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.chat-textarea::-webkit-scrollbar,
+#group-text-input::-webkit-scrollbar {
+  display: none;
+}
+
+/* Riga contenente il pulsante media e i pulsanti di azione. */
+.chat-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Pulsante di upload media (📎). */
+.btn-media-upload,
+#group-media-upload-btn {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 1.2em;
+  padding: 0;
+}
+
+/* Contenitore dei pulsanti microfono e invio. */
+.chat-action-buttons {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+}
+
+/* Pulsanti di azione (registra/invia). */
+.chat-action-buttons button {
+  flex: 1;
+  padding: 10px 0;
+  text-align: center;
+}
+
+/* --- Pulsante registrazione vocale / dettatura --- */
+.btn-record,
+#group-record-btn {
+  background: transparent;
+  color: var(--action);
+  border: 1px solid var(--action);
+  border-radius: 12px;
+  flex: 1 1 auto;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+/* Stato di registrazione attiva. */
+.btn-record.recording,
+#group-record-btn.recording {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Stato attivo (pressione) del pulsante registrazione. */
+#record-btn:active,
+#group-record-btn:active {
+  background: var(--danger);
+}
+
+/* Icona del microfono all'interno del pulsante. */
+.mic-icon {
+  height: 20px;
+  width: auto;
+  vertical-align: middle;
+  margin-right: 4px;
+  object-fit: contain;
+}
+
+/* --- Pulsante invio testo --- */
+.btn-send,
+#group-send-text-btn {
+  background: transparent;
+  color: var(--success);
+  border: 1px solid var(--success);
+  border-radius: 12px;
+  flex: 1 1 auto;
+}
+
+/* --- Icona altoparlante per ascolto messaggio --- */
+.speaker-icon {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  font-size: 1.2em;
+  opacity: 0.9;
+  transition: opacity 0.2s;
+  user-select: none;
+  text-shadow: 0 0 3px rgba(var(--shadow-dark-rgb), 0.6);
+}
+
+.speaker-icon:hover {
+  opacity: 1;
+}
+
+/* --- Pulsante per ascoltare nota vocale ricevuta --- */
+.voice-note-play {
+  cursor: pointer;
+  text-decoration: none;
+  color: var(--text);
+}
+
+/* --- Spunte di lettura --- */
+.read-status {
+  font-size: 0.8em;
+  margin-left: 4px;
+}
+
+/* Spunte su messaggio inviato (consegnato/letto). */
+.message-item.sent .read-status.delivered,
+.message-item.sent .read-status.read {
+  color: var(--bubble-sent-text);
+}
+
+/* Spunte su messaggio ricevuto (non dovrebbero apparire, ma per sicurezza). */
+.message-item.received .read-status.delivered,
+.message-item.received .read-status.read {
+  color: var(--bubble-received-text);
+}
+
+/* --- Contenuti multimediali nei messaggi --- */
+/* Immagine nel messaggio. */
+.message-image {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: block;
+  margin: 4px 0;
+}
+
+/* Video nel messaggio. */
+.message-video {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: block;
+  margin: 4px 0;
+}
+
+/* Placeholder testuale per video non ancora caricato (retrocompatibilità). */
+.video-placeholder {
+  cursor: pointer;
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+/* Placeholder testuale per immagine non ancora caricata (retrocompatibilità). */
+.image-placeholder {
+  cursor: pointer;
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+/* Wrapper per anteprima video (thumbnail + overlay play). */
+.video-thumbnail-wrapper {
+  position: relative;
+  display: inline-block;
+  max-width: 200px;
+  max-height: 200px;
+  cursor: pointer;
+  border-radius: 8px;
+  overflow: hidden;
+  line-height: 0;
+  background: var(--bg-media-thumbnail);
+}
+
+/* Immagine di anteprima del video. */
+.video-thumbnail-wrapper img {
+  display: block;
+  max-width: 100%;
+  max-height: 200px;
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+  object-fit: contain;
+  background: var(--bg-media-thumbnail);
+}
+
+/* Overlay con icona play centrata. */
+.play-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --- Lightbox per visualizzazione a schermo intero --- */
+.lightbox {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(var(--shadow-dark-rgb), 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+/* Pulsante di chiusura del lightbox. */
+.lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 30px;
+  font-size: 2em;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* Immagine dentro il lightbox. */
+.lightbox img {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+}
+
+/* Video dentro il lightbox. */
+.lightbox video {
+  max-width: 90%;
+  max-height: 90%;
+}
+
+/* --- Messaggi effimeri --- */
+/* Messaggio effimero (bordo tratteggiato, sfondo semitrasparente). */
+.message-item.ephemeral {
+  border: 2px dashed var(--primary);
+  background: rgba(var(--primary-rgb), 0.1);
+}
+
+/* Messaggio effimero ricevuto. */
+.message-item.ephemeral.received {
+  border-color: var(--secondary);
+  background: rgba(var(--secondary-rgb), 0.1);
+}
+
+/* --- Toggle effimero nella chat --- */
+.ephemeral-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Checkbox all'interno del toggle effimero. */
+.ephemeral-toggle input {
+  width: auto;
+  margin: 0;
+}
+
+/* --- Selettore scadenza chat --- */
+#chat-expiry-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 0.8rem;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 10px;
+}
+
+#chat-expiry-selector select {
+  width: auto;
+  flex: 1;
+  padding: 4px 0;
+  border: none;
+  border-bottom: none;
+}
+
+#chat-expiry-selector label {
+  white-space: nowrap;
+}
+
+/* --- Indicatore di digitazione --- */
+#typing-indicator {
+  font-style: italic;
+}
+
+/* --- Chat di gruppo --- */
+/* Contenitore principale della chat di gruppo. */
+#group-chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  padding-bottom: 8px;
+}
+
+/* Header della chat di gruppo. */
+#group-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
+/* Titolo del gruppo. */
+#group-chat-title {
+  flex: 1;
+  text-align: center;
+}
+
+/* ================================================================
+   CONTATTI
+   ================================================================ */
+
+/* --- Titolo della pagina (usato anche in Traduttore) --- */
+/* Elemento: <h2 class="page-title">. Visualizzato in cima a contatti, chat, traduttore. */
+.page-title {
+  color: var(--primary);
+  text-align: left;
+  padding: 8px 16px 6px 16px;
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+/* --- Barra di ricerca (contatti e chat) --- */
+/* Contenitore della barra di ricerca. */
+.search-bar {
+  margin: 12px 8px 8px;
+  padding: 0;
+}
+
+/* Campo di input per la ricerca. */
+.search-input {
+  width: 100%;
+  padding: 10px 16px;
+  border: 2px solid var(--border);
+  border-radius: 50px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.95rem;
+  outline: none;
+  box-sizing: border-box;
+}
+
+/* Placeholder nella barra di ricerca. */
+.search-input::placeholder {
+  color: var(--text-secondary);
+}
+
+/* Stato focus della barra di ricerca. */
+.search-input:focus {
+  border-color: var(--primary);
+}
+
+/* --- Contenitore della lista contatti --- */
+/* Elemento: <div id="contacts-list">. */
+#contacts-list {
+  height: 100%;
+  overflow-y: auto;
+  padding-bottom: 8px;
+  padding-top: 16px;
+}
+
+/* Distanzia la barra di ricerca dalla lista. */
+#contacts-list .search-bar {
+  margin-bottom: 24px;
+}
+
+/* --- Item contatto generico (usato sia in contatti che in chat) --- */
+/* Singola riga nella lista contatti o chat. */
+.contact-item {
+  background: var(--chat-banner-bg);
+  padding: 12px 0;
+  border-radius: 16px;
+  border: 1px solid;
+  border-color: rgba(var(--text-rgb), var(--contact-border-opacity, 0.5));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* Contenitore delle informazioni (avatar + nome + stato). */
+.contact-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Avatar piccolo dentro l'item contatto. */
+.contact-info .avatar-small,
+.contact-info .avatar-placeholder {
+  margin-left: 10px;
+}
+
+/* Bandiera della lingua (emoji). */
+.contact-flag {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+/* Dettagli testuali (nome, ruolo, anteprima). */
+.contact-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Nome del contatto. */
+.contact-name {
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Ruolo (key-holder/guest). */
+.contact-role {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+/* Contenitore azioni (es. pulsante Accetta). */
+.contact-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-right: 10px;
+}
+
+/* Nasconde il contenitore azioni se vuoto. */
+.contact-actions:empty {
+  display: none;
+}
+
+/* --- Pulsanti specifici dei contatti --- */
+/* Pulsante piccolo generico. */
+.btn-small {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  border-radius: 8px;
+}
+
+/* Pulsante Accetta (per richieste in arrivo). */
+.btn-accept {
+  background: var(--success-light);
+  color: var(--text);
+}
+
+/* Pulsante per azioni pericolose (Elimina, Esci). */
+.btn-danger {
+  background: var(--danger);
+  color: var(--text);
+}
+
+/* --- Badge "In attesa" --- */
+.pending-badge {
+  background: var(--primary);
+  color: var(--text);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  margin-left: 8px;
+}
+
+/* --- Titoli di sezione (Richieste in arrivo, Richieste inviate) --- */
+.section-title {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin: 16px 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* --- Modale lista contatti (usata per nuova chat, gruppo, multi‑contatto) --- */
+/* Contenitore scrollabile della lista contatti nella modale. */
+.modal-contact-list {
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+  scrollbar-width: none;
+}
+
+/* Nasconde scrollbar Webkit nella modale. */
+.modal-contact-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* Singolo item contatto nella modale. */
+.modal-contact-item {
+  background: var(--bg);
+  padding: 10px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+/* Effetto pressione (feedback tattile). */
+.modal-contact-item:active {
+  background: var(--border);
+}
+
+/* Struttura info dentro modal contact item. */
+.modal-contact-item .contact-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.modal-contact-item .contact-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.modal-contact-item .contact-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.modal-contact-item .contact-name {
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.modal-contact-item .contact-role {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.modal-contact-item .avatar-small,
+.modal-contact-item .avatar-placeholder {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+/* Pallino di presenza all'interno degli item modale. */
+.modal-contact-item .presence-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+
+.modal-contact-item .presence-dot.online {
+  background: var(--presence-online);
+  box-shadow: 0 0 6px var(--presence-online);
+}
+
+.modal-contact-item .presence-dot.offline {
+  background: var(--presence-offline);
+}
+
+/* --- Modale ricerca multi‑contatto --- */
+#multi-search-results .search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#multi-search-results input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+.search-result-item {
+  background: var(--surface2);
+  padding: 10px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+/* --- LISTA CHAT (struttura simile a contatti) --- */
+/* Contenitore principale della lista chat. */
+#chats-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+}
+
+/* Titolo e barra di ricerca all'interno di chats-list (senza sfondo immagine). */
+#chats-list .page-title,
+#chats-list .search-bar {
+  background-color: var(--bg);
+  margin: 0;
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+/* Wrapper flessibile che si espande (come .messages-wrapper). */
+.chats-wrapper {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 16px;
+}
+
+/* Immagine di sfondo e overlay sul wrapper (non sull'inner). */
+.chats-wrapper::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: var(--chat-bg-image);
+  background-repeat: repeat;
+  background-size: auto;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.chats-wrapper::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--bg);
+  opacity: var(--chat-list-bg-opacity, var(--chat-bg-opacity, 0.9));
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Contenuto della lista (contatti/chats) sopra lo sfondo. */
+#chats-list-inner {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 16px;
+  margin-top: 16px;
+}
+
+/* Item chat (variante di .contact-item). */
+.chat-item {
+  background: rgba(var(--chat-banner-bg-rgb, 255, 255, 255), 0.6);
+  border: 1px solid var(--surface2);
+  border-radius: 16px;
+  margin-bottom: 8px;
+  transition: background 0.2s ease;
+}
+
+/* Effetto hover per feedback visivo. */
+.chat-item:hover {
+  background: var(--bg);
+}
+
+/* Anteprima ultimo messaggio nella lista chat. */
+.chat-preview {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+/* Icona opzionale nell'anteprima (immagine, video). */
+.chat-preview-icon {
+  margin-right: 4px;
+}
+
+/* ================================================================
+   PROFILO
+   ================================================================ */
+
+/* --- Contenitore principale del profilo --- */
+/* Elemento: <div id="profile-panel">. Visualizzato quando si apre il profilo utente. */
+#profile-panel {
+  height: 100%;
+  overflow-y: auto;
+  padding-top: 26px;
+  padding-bottom: 70px;
+  scrollbar-width: none;
+}
+
+/* Nasconde scrollbar Webkit nel pannello profilo. */
+#profile-panel::-webkit-scrollbar {
+  display: none;
+}
+
+/* --- Contenitore impostazioni profilo --- */
+/* Elemento: <div id="settings-container">. Padding laterale e margine inferiore. */
+#settings-container {
+  padding: 0 16px;
+  margin-bottom: 20px;
+}
+
+/* Piccoli testi nel profilo: centrati (es. hint sotto i campi). */
+#settings-container small {
+  text-align: center;
+}
+
+/* --- Gruppo di campi generico --- */
+/* Contenitore per un gruppo label + input/select. */
+.form-group {
+  margin-bottom: 20px;
+}
+
+/* --- Gruppo di campi in linea (etichetta a sinistra, campo a destra) --- */
+/* Riga con etichetta e controllo affiancati, separati da bordo inferiore. */
+.form-group-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0;
+  border-bottom: 2px solid var(--border);
+  height: 64px;
+  padding: 0;
+}
+
+/* Etichetta all'interno del gruppo inline. */
+.form-group-inline label {
+  margin-bottom: 0;
+  white-space: nowrap;
+  margin-right: 12px;
+}
+
+/* Input e select nei gruppi inline: allineati a destra, senza bordo. */
+.form-group-inline input,
+.form-group-inline select {
+  flex: 1;
+  width: 100%;
+  text-align: right;
+  border: none;
+  padding-right: 0;
+}
+
+/* Uniforma altezza dei campi nei gruppi inline. */
+.form-group-inline select {
+  height: 40px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+}
+
+.form-group-inline input[type="text"],
+.form-group-inline input[type="password"] {
+  height: 40px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+}
+
+/* Pulsanti generici nei gruppi inline (esclusi cambia password e gestisci API). */
+.form-group-inline button:not(.btn-change-password):not(.btn-manage-api) {
+  height: 40px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+}
+
+/* Spazio extra per la freccia del select. */
+.form-group-inline select {
+  padding-right: 24px;
+}
+
+/* Nel pannello profilo, il toggle wrapper assume la stessa altezza degli altri controlli. */
+#settings-container .toggle-switch-wrapper {
+  height: 40px;
+}
+
+/* --- Riga password (label + pulsante cambia) --- */
+.password-row {
+  display: flex;
+  align-items: center;
+}
+
+/* --- Avatar --- */
+/* Sezione avatar: anteprima + pulsanti upload/remove. */
+.avatar-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  justify-content: center;
+}
+
+/* Immagine di anteprima dell'avatar. */
+.avatar-preview {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+}
+
+/* --- Pulsanti specifici del profilo --- */
+/* Pulsante "Cambia password" (bordo rosso sottile). */
+.btn-change-password {
+  background: none;
+  outline: 1px solid var(--danger);
+  color: var(--text);
+  border: none;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 0.85rem;
+  line-height: 26px;
+  width: auto;
+  flex-shrink: 0;
+  align-self: center;
+  height: 28px;          /* mantieni 28px per coerenza */
+}
+
+/* Pulsante per riavviare il tour guidato. */
+.btn-tour {
+  background: none;
+  outline: 1px solid var(--tour-color);
+}
+
+/* Pulsante "Gestisci chiavi API" (bordo giallo). */
+.btn-manage-api {
+  background-color: transparent;
+  outline: 1px solid #ffd700;
+  color: var(--text);
+  height: 28px;
+  padding: 0 12px;
+  line-height: 26px;
+}
+
+/* Pulsante "Aggiungi" chiave API (sfondo verde). */
+.btn-add-api {
+  background-color: var(--success);
+  color: var(--text);
+}
+
+/* Outline per pulsante Apri pannello (stesso blu di Force) */
+#admin-panel-open-btn {
+  outline: 1px solid #2196f3;
+  outline-offset: 1px;
+}
+
+/* --- Contenitore pulsanti Salva / Elimina account / Logout --- */
+/* Riga centrale per i pulsanti principali. */
+.profile-buttons {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 30px;
+  gap: 12px;
+  width: 260px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Pulsanti interni al contenitore. */
+.profile-buttons button {
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Pulsante Logout (separato, larghezza fissa). */
+#logout-btn {
+  display: block;
+  width: 354px;
+  margin: 20px auto 0 auto;
+}
+
+/* --- Pulsante Salva modifiche (verde) --- */
+.btn-save {
+  border-radius: var(--radius);
+  padding: 10px 24px;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  width: auto;
+  text-align: center;
+  background-color: var(--bg);
+  color: var(--text);
+  outline: var(--save-outline);
+  outline-offset: 1px;
+}
+
+/* --- Pulsante Elimina account (rosso) --- */
+.btn-delete {
+  border-radius: var(--radius);
+  padding: 10px 24px;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  width: auto;
+  text-align: center;
+  background-color: var(--danger);
+  color: var(--bubble-sent-text);
+}
+
+/* --- Wrapper per toggle switch (componente riutilizzabile) --- */
+/* Contenitore che allinea verticalmente il toggle. */
+.toggle-switch-wrapper {
+  display: flex;
+  align-items: center;
+  height: 36px;
+}
+
+/* --- Modale gestione chiavi API --- */
+/* Gruppo di campi nella modale: input + pulsante affiancati. */
+#api-keys-modal .form-group {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+#api-keys-modal .form-group input {
+  flex: 1;
+}
+
+/* Elemento della lista chiavi API. */
+.api-key-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Ultimi 8 caratteri della chiave in font monospace. */
+.api-key-item .key-last8 {
+  font-family: monospace;
+}
+
+/* --- Fingerprint E2E (impronta della chiave pubblica) --- */
+#e2e-fingerprint-self {
+  font-size: 0.8em;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  margin-bottom: 16px;
+  text-align: center;
+  word-break: break-all;
+}
+
+/* ================================================================
+   TRADUTTORE
+   ================================================================ */
+
+/* --- Contenitore principale del pannello traduzione --- */
+/* Elemento: <div id="translate-panel">. Visualizzato quando si apre la traduzione vocale/testuale. */
+#translate-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  padding-top: 8px;
+  padding-bottom: 70px;
+}
+
+/* --- Header del traduttore --- */
+/* Riga superiore con titolo e opzioni. */
+.translate-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 0;
+  padding-right: 16px;
+}
+
+/* --- Toggle "Mostra originale" nell'header --- */
+/* Contenitore delle opzioni (allineato a destra). */
+#translate-options {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 0;
+}
+
+/* Toggle switch con etichetta (Mostra originale). */
+.translate-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-right: 16px;
+}
+
+/* Checkbox del toggle (nascosto dal toggle-switch). */
+.translate-toggle input {
+  width: auto;
+  margin: 0;
+}
+
+/* --- Area di output della traduzione --- */
+/* Contenitore scrollabile che racchiude il testo tradotto. */
+#translate-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  margin: 0;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* Nasconde scrollbar Webkit nell'area di traduzione. */
+#translate-area::-webkit-scrollbar {
+  display: none;
+}
+
+/* Box che mostra il testo tradotto (contenuto dinamico). */
+.translate-output {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 12px;
+  scrollbar-width: none;
+  background: var(--surface);
+  border-radius: var(--radius);
+  font-size: 1em;
+  text-align: center;
+  word-break: break-word;
+}
+
+/* Nasconde scrollbar Webkit nell'output. */
+.translate-output::-webkit-scrollbar {
+  display: none;
+}
+
+/* --- Controlli inferiori (selettori lingua + pulsanti microfono) --- */
+/* Riga contenente i due lati (sinistro e destro) del pannello. */
+.translate-controls {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 0;
+  padding: 0 16px;
+}
+
+/* Lato sinistro o destro del pannello di controllo. */
+.translate-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+/* Selettore della lingua (dropdown). */
+.translate-lang-select {
+  width: 100%;
+  padding: 10px 0;
+  border: none;
+  border-bottom: 2px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 1rem;
+  min-height: 40px;
+}
+
+/* --- Pulsanti per parlare/inviare (entrambi i lati) --- */
+/* Pulsante base per la registrazione vocale e invio traduzione. */
+.translate-speak-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: var(--radius);
+  font-size: 1.1em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+  background: transparent;
+}
+
+/* Pulsante lato sinistro (lingua di partenza). */
+#translate-btn-left {
+  border-color: var(--action);
+  color: var(--action);
+}
+
+#translate-btn-left:active {
+  border-color: var(--action-hover);
+  color: var(--action-hover);
+}
+
+/* Pulsante lato destro (lingua di destinazione). */
+#translate-btn-right {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+#translate-btn-right:active {
+  border-color: var(--success-hover);
+  color: var(--success-hover);
+}
+
+/* Stato di registrazione attiva per entrambi i pulsanti. */
+.translate-speak-btn.recording {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Bandiera della lingua nel pulsante. */
+.btn-flag {
+  font-size: 1.5em;
+}
+
+/* Etichetta testuale nel pulsante (es. "Parla" / "Invia"). */
+.btn-label {
+  font-weight: bold;
+}

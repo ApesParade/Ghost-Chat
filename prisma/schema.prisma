@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String   @id @default(uuid())
+  password_hash       String
+  name                String
+  username            String   @unique
+  language_code       String   @default("it-IT")
+  flag                String   @default("🇮🇹")
+  api_key             String?
+  has_api_key         Boolean  @default(false)
+  preferred_voice     String?
+  recording_beep      String?   @default("pop")
+  push_subscription   String?
+  public_key          String?
+  avatar              String?
+  global_expiry_hours Float?
+  created_at          DateTime @default(now())
+  isActive            Boolean  @default(false)
+  isAdmin             Boolean  @default(false)
+  ephemeralDefault    Boolean  @default(false)
+  adminNote           String?
+
+  contacts                  Contact[]                 @relation("UserContacts")
+  contactOf                 Contact[]                 @relation("UserContactOf")
+  ownedExpiryPreferences    MessageExpiryPreference[] @relation("PreferenceOwner")
+  targetedExpiryPreferences MessageExpiryPreference[] @relation("PreferenceContact")
+  apiKeys                   ApiKey[]
+  adminNotificationRecipients AdminNotificationRecipient[]
+  sentAdminNotifications    AdminNotification[]      @relation("Sender")
+}
+
+model AdminNotification {
+  id        String   @id @default(uuid())
+  senderId  String
+  createdAt DateTime @default(now())
+
+  sender      User                              @relation("Sender", fields: [senderId], references: [id], onDelete: Cascade)
+  translations AdminNotificationTranslation[]
+  recipients   AdminNotificationRecipient[]
+}
+
+model AdminNotificationTranslation {
+  id             String   @id @default(uuid())
+  notificationId String
+  languageCode   String   // es. "it-IT", "en-US"
+  translatedText String
+
+  notification AdminNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, languageCode])
+}
+
+model AdminNotificationRecipient {
+  id             String   @id @default(uuid())
+  notificationId String
+  userId         String
+  isRead         Boolean  @default(false)
+  readAt         DateTime?
+
+  notification AdminNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+}
+
+model ApiKey {
+  id            String   @id @default(uuid())
+  user_id       String
+  encrypted_key String
+  last_8        String
+  created_at    DateTime @default(now())
+  user          User     @relation(fields: [user_id], references: [id])
+}
+
+model Contact {
+  id           Int      @id @default(autoincrement())
+  user_id      String
+  contact_id   String
+  status       String
+  requested_by String
+  created_at   DateTime @default(now())
+  user_cleared_at   DateTime?
+  contact_cleared_at DateTime?
+  user_chat_active    Boolean  @default(true)
+  contact_chat_active Boolean  @default(true) 
+
+  user    User @relation("UserContacts", fields: [user_id], references: [id])
+  contact User @relation("UserContactOf", fields: [contact_id], references: [id])
+}
+
+model MessageExpiryPreference {
+  id           Int    @id @default(autoincrement())
+  user_id      String
+  contact_id   String
+  expiry_hours Float?
+
+  owner       User @relation("PreferenceOwner", fields: [user_id], references: [id], onDelete: Cascade)
+  contactUser User @relation("PreferenceContact", fields: [contact_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, contact_id])
+}
+
+model Message {
+  id                String    @id @default(uuid())
+  conversation_id   String
+  sender_id         String
+  recipient_id      String
+  translated_text   String
+  original_text     String?
+  original_language String?
+  expiry_hours Float?
+  read_at           DateTime?
+  created_at        DateTime  @default(now())
+  expires_at        DateTime?
+  is_encrypted      Boolean   @default(false)
+  reactions         String?   // JSON array di { emoji, userId }
+  type              String    @default("text")
+  audio_data        String?
+  image_data        String?
+  video_data        String?
+  @@index([conversation_id, created_at])
+}

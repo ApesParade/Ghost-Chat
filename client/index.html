@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Ghost Chat</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png" />
+    <meta name="theme-color" content="#1a1a2e" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Auth Screen -->
+      <div id="auth-screen" class="screen active">
+        <h1 data-i18n="login_title"></h1>
+        <p class="subtitle" data-i18n="login_subtitle"></p>
+        <div id="auth-forms">
+          <form id="login-form" class="auth-form">
+            <h2 data-i18n="login_heading"></h2>
+            <input type="text" id="login-username" data-i18n-placeholder="login_username_placeholder" required autocomplete="username" />
+             <input type="password" id="login-password" data-i18n-placeholder="login_password_placeholder" required autocomplete="current-password" />
+            <button type="submit" data-i18n="login_button"></button>
+            <p><span data-i18n="login_no_account"></span> <a href="#" id="show-register" data-i18n="login_register_link"></a></p>
+          </form>
+          <form id="register-form" class="auth-form hidden">
+            <h2 data-i18n="register_heading"></h2>
+            <input type="text" id="reg-username" data-i18n-placeholder="register_username_placeholder" required />
+            <input type="password" id="reg-password" data-i18n-placeholder="register_password_placeholder" required />
+            <select id="reg-language" required>
+              <option value="it-IT">🇮🇹 Italiano</option>
+              <option value="en-US">🇺🇸 English</option>
+              <option value="es-ES">🇪🇸 Español</option>
+              <option value="fr-FR">🇫🇷 Français</option>
+              <option value="de-DE">🇩🇪 Deutsch</option>
+              <option value="ru-RU">🇷🇺 Русский</option>
+              <option value="zh-CN">🇨🇳 中文</option>
+              <option value="ar-SA">🇸🇦 العربية</option>
+              <option value="ja-JP">🇯🇵 日本語</option>
+              <option value="ko-KR">🇰🇷 한국어</option>
+              <option value="pt-BR">🇧🇷 Português</option>
+              <option value="nl-NL">🇳🇱 Nederlands</option>
+              <option value="pl-PL">🇵🇱 Polski</option>
+              <option value="tr-TR">🇹🇷 Türkçe</option>
+              <option value="hi-IN">🇮🇳 हिन्दी</option>
+            </select>
+            <input type="text" id="reg-api-key" data-i18n-placeholder="register_api_key_placeholder" autocomplete="off" spellcheck="false" style="-webkit-text-security: disc;"/>
+            <button type="submit" data-i18n="register_button"></button>
+            <p><span data-i18n="register_has_account"></span> <a href="#" id="show-login" data-i18n="register_login_link"></a></p>
+          </form>
+        </div>
+      </div>
+
+      <!-- Main Screen -->
+      <div id="main-screen" class="screen">
+        <nav class="bottom-nav">
+          <button id="nav-translate" class="nav-btn">
+            <img src="icons/translate.png" alt="" class="nav-icon" data-icon="translate" />
+            <span class="nav-label" data-i18n="nav_translate"></span>
+          </button>
+          <button id="nav-profile" class="nav-btn">
+            <img src="icons/profile.png" alt="" class="nav-icon" data-icon="profile" />
+            <span class="nav-label" data-i18n="nav_profile"></span>
+          </button>
+          <button id="nav-contacts" class="nav-btn active">
+            <img src="icons/contacts.png" alt="" class="nav-icon" data-icon="contacts" />
+            <span class="nav-label" data-i18n="nav_contacts"></span>
+          </button>
+          <button id="nav-chats" class="nav-btn">
+            <img src="icons/chat.png" alt="" class="nav-icon" data-icon="chat" />
+            <span class="nav-label" data-i18n="nav_chats"></span>
+          </button>
+        </nav>
+        <div id="offline-banner" data-i18n="offline_banner"></div>
+        <div id="main-content" class="main-content">
+          <div id="fab-overlay" class="fab-overlay" style="display:none;">+</div>
+          <!-- Chat Options Modal -->
+          <div id="chat-options-modal" class="modal-overlay hidden">
+            <div class="modal">
+              <h3 data-i18n="new_chat_title">Nuova chat</h3>
+              <button id="modal-individual-chat" class="btn-save" style="width:100%; margin-bottom:8px;" data-i18n="individual_chat">💬 Chat individuale</button>
+              <button id="modal-group-chat" class="btn-save" style="width:100%;" data-i18n="group_chat">👥 Chat di gruppo</button>
+              <button id="close-chat-options-modal" class="secondary" style="width:100%; margin-top:8px;" data-i18n="btn_cancel">Annulla</button>
+            </div>
+          </div>
+          <div id="contacts-list" style="display:none;">
+            <h2 class="page-title">Contatti</h2>
+            <div class="search-bar">
+              <input type="search" id="contacts-search" class="search-input" data-i18n-placeholder="search_contacts_placeholder" placeholder="Cerca contatti...">
+            </div>
+            <div id="contacts-list-inner"></div>
+          </div>
+          <div id="chats-list" style="display:none;">
+            <h2 class="page-title">Chat</h2>
+            <div class="search-bar">
+              <input type="search" id="chats-search" class="search-input" data-i18n-placeholder="search_chats_placeholder" placeholder="Cerca chat...">
+            </div>
+            <div class="chats-wrapper">   <!-- nuovo wrapper flessibile -->
+              <div id="chats-list-inner"></div>
+            </div>
+          </div>
+          <div id="chat-container" style="display: none">
+            <div id="chat-header">
+              <button id="back-to-contacts" class="btn-back-arrow" title="Indietro">←</button>
+              <div id="chat-contact-info" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <div id="chat-avatar"></div>
+                <span id="chat-username" style="font-weight: 500;"></span>
+                <span id="contact-status" class="contact-status offline" style="margin-left: 4px;"></span>
+              </div>
+              <button id="clear-chat-btn" class="btn-clear-chat-outline" data-i18n="clear_chat_btn">Clear Chat</button>
+            </div>
+            <!-- Selezione timer per questa chat -->
+            <div id="typing-indicator" style="display:none; text-align:center; color:var(--text-secondary); font-size:0.8em; margin-bottom: 8px;" data-i18n="typing_indicator"></div>
+            <div id="chat-expiry-selector">
+              <label for="chat-expiry-select" data-i18n="expiry_label"></label>
+              <select id="chat-expiry-select" data-i18n-select="expiry_options"></select>
+              <label id="ephemeral-label" class="ephemeral-toggle">
+                <input type="checkbox" id="ephemeral-checkbox" />
+                <span data-i18n="ephemeral_mode">👻 Effimero</span>
+              </label>
+            </div>
+            <div id="emoji-menu" class="emoji-menu" style="display:none"></div>
+            <div id="messages-wrapper" class="messages-wrapper">
+              <div id="messages-list" class="messages-list"></div>
+            </div>
+            <div id="message-display" class="message-bubble" style="display: none"></div>
+            <div id="original-display" class="original-text"></div>
+            <div class="chat-controls">
+              <textarea id="text-input" class="chat-textarea" data-i18n-placeholder="text_input_placeholder" rows="1"></textarea>
+              <div class="chat-input-row">
+                <button id="media-upload-btn" class="btn-primary btn-media-upload" title="Invia foto o video">📎</button>
+                <div class="chat-action-buttons">
+                  <button id="record-btn" class="btn-primary btn-record" data-i18n="record_btn_speak"></button>
+                  <button id="send-text-btn" class="btn-primary btn-send" data-i18n="send_btn"></button>
+                </div>
+              </div>
+              <input type="file" id="media-input" accept="image/*,video/*" style="display:none" />
+            </div>
+          </div>
+          <div id="group-chat-container" style="display:none; flex-direction:column; height:100%; overflow:hidden; padding-bottom:8px;">
+            <div id="group-chat-header" style="display:flex; align-items:center; justify-content:space-between; margin-top:12px; margin-bottom:8px;">
+              <span id="group-chat-title" style="flex:1; text-align:center;">Gruppo</span>
+              <button id="leave-group-btn" class="btn-small btn-danger" data-i18n="group_leave_btn">Esci</button>
+            </div>
+            <div id="group-messages-list" class="messages-list"></div>
+            <div class="chat-controls">
+              <textarea id="group-text-input" class="chat-textarea" data-i18n-placeholder="text_input_placeholder" rows="1"></textarea>
+              <div class="chat-input-row">
+                <button id="group-media-upload-btn" class="btn-primary btn-media-upload" title="Invia foto o video">📎</button>
+                <div class="chat-action-buttons">
+                  <button id="group-record-btn" class="btn-primary btn-record" data-i18n="record_btn_speak"></button>
+                  <button id="group-send-text-btn" class="btn-primary btn-send" data-i18n="send_btn">Invia</button>
+                </div>
+              </div>
+              <input type="file" id="group-media-input" accept="image/*,video/*" style="display:none" />
+            </div>
+          </div>
+          <div id="profile-panel" style="display: none">
+            <div id="settings-container">
+              <div class="avatar-section">
+                <img id="avatar-preview" class="avatar-preview" src="" alt="Avatar" style="display: none" />
+                <input type="file" id="avatar-input" accept="image/*" style="display: none" />
+                <button id="avatar-upload-btn" class="btn-small secondary" data-i18n="profile_avatar_upload"></button>
+                <button id="avatar-remove-btn" class="btn-small btn-danger" style="display: none" data-i18n="profile_avatar_remove"></button>
+              </div>
+              <div class="form-group form-group-inline">
+                <label data-i18n="profile_username_label"></label>
+                <input type="text" id="settings-username" />
+              </div>
+              <div class="form-group form-group-inline password-row">
+                <label data-i18n="profile_password_label">Password</label>
+                <button id="change-password-btn" class="btn-small btn-change-password" data-i18n="profile_change_password_btn">Cambia</button>
+              </div>
+              <div class="form-group form-group-inline">
+                <label for="settings-language" data-i18n="profile_language_label"></label>
+                <select id="settings-language"></select>
+              </div>
+              <div class="form-group form-group-inline">
+                <span data-i18n="profile_ephemeral_default">👻 Ghost di default</span>
+                <label class="toggle-switch-wrapper">
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="settings-ephemeral-default" />
+                    <span class="toggle-slider"></span>
+                  </div>
+                </label>
+              </div>
+              <div class="form-group form-group-inline">
+                <label for="settings-voice" data-i18n="profile_voice_label"></label>
+                <select id="settings-voice"></select>
+              </div>
+              <div class="form-group form-group-inline">
+                <label for="settings-theme" data-i18n="profile_theme_label"></label>
+                <select id="settings-theme">
+                  <option value="original">Original</option>
+                  <option value="redlight">RedLight District</option>
+                  <option value="cyberpunk">Cyberpunk</option>
+                  <option value="matrix">Matrix</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="telegram">Telegram</option>
+                </select>
+              </div>
+              <div class="form-group form-group-inline">
+                <label for="settings-beep" data-i18n="profile_beep_label">Suono registrazione</label>
+                <select id="settings-beep">
+                  <option value="pop">Pop</option>
+                  <option value="chime">Chime</option>
+                  <option value="double">Double Ping</option>
+                </select>
+              </div>
+              <div class="form-group form-group-inline">
+                <label data-i18n="profile_tour_label">Info tour</label>
+                <button id="restart-tour-btn" class="btn-small btn-change-password btn-tour" data-i18n="profile_tour_button">Comincia tour</button>
+              </div>
+              <div class="form-group form-group-inline">
+                <label data-i18n="profile_api_keys_label">Chiavi API</label>
+                <button type="button" id="manage-api-keys-btn" class="btn-small btn-manage-api" data-i18n="manage_api_keys_btn">Gestisci chiavi API</button>
+              </div>
+              <div class="form-group form-group-inline" id="admin-panel-group" style="display: none;">
+                <label data-i18n="admin_panel_label">Admin Panel</label>
+                <button type="button" id="admin-panel-open-btn" class="btn-small btn-manage-api" data-i18n="admin_panel_open_btn">Open Panel</button>
+              </div>
+              <small data-i18n="profile_api_keys_hint" style="display: block; margin-top: 0.25rem;"></small>
+              <div class="form-group" style="margin-top: 1rem;">
+                <button id="regenerate-keys-btn" class="btn-small btn-danger" style="width: 100%" data-i18n="profile_regenerate_keys"></button>
+                <small data-i18n="profile_regenerate_keys_hint"></small>
+              </div>
+              <p id="e2e-fingerprint-self" class="e2e-fingerprint" style="display:none"></p>
+              <button id="logout-btn" class="secondary" data-i18n="profile_logout"></button>
+              <div class="profile-buttons">
+                <button id="delete-account" class="btn-delete" data-i18n="profile_delete_account"></button>
+                <button id="save-settings" class="btn-save" data-i18n="profile_save"></button>
+              </div>
+              <p id="settings-error" class="error"></p>
+              <p id="settings-success" class="success"></p>
+            </div>
+          </div>
+          </div>
+          <div id="translate-panel" style="display: none">
+            <div id="translate-header" class="translate-header">
+              <h2 class="page-title" data-i18n="translate_title">Traduci</h2>
+              <div id="translate-options">
+                <label class="translate-toggle toggle-switch-label">
+                  <span data-i18n="translate_show_original">Mostra originale</span>
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="show-original-checkbox" />
+                    <span class="toggle-slider"></span>
+                  </div>
+                </label>
+              </div>
+            </div>
+            <div id="translate-area">
+              <div id="translate-output" class="translate-output"></div>
+            </div>
+            <div class="translate-controls">
+              <div class="translate-side">
+                <select id="translate-lang-left" class="translate-lang-select">
+                  <!-- popolato dinamicamente -->
+                </select>
+                <button id="translate-btn-left" class="translate-speak-btn">
+                  <span class="btn-flag"></span>
+                  <span class="btn-label"></span>
+                </button>
+              </div>
+              <div class="translate-side">
+                <select id="translate-lang-right" class="translate-lang-select">
+                  <!-- popolato dinamicamente -->
+                </select>
+                <button id="translate-btn-right" class="translate-speak-btn">
+                  <span class="btn-flag"></span>
+                  <span class="btn-label"></span>
+                </button>
+              </div>
+            </div>
+          </div>
+      <!-- Confirm Delete Modal -->
+      <div id="confirm-delete-modal" class="modal-overlay hidden">
+        <div class="modal">
+          <p id="confirm-delete-message" style="text-align:center; margin-bottom:16px;"></p>
+          <div style="display:flex; gap:8px;">
+            <button id="confirm-delete-cancel" class="secondary" style="flex:1;" data-i18n="btn_cancel">Annulla</button>
+            <button id="confirm-delete-ok" class="btn-delete" style="flex:1;" data-i18n="btn_delete">Cancella</button>
+          </div>
+        </div>
+      </div>
+      <!-- Add Contact Multi Modal -->
+      <div id="add-contact-multi-modal" class="modal-overlay hidden">
+        <div class="modal">
+          <h3 data-i18n="add_contacts_title">Aggiungi contatti</h3>
+          <input type="text" id="multi-search-username" data-i18n-placeholder="search_placeholder" />
+          <div id="multi-search-results" class="search-results" style="max-height:250px; overflow-y:auto;"></div>
+          <div style="display:flex; gap:8px; margin-top:12px;">
+            <button id="multi-cancel-btn" class="secondary" style="flex:1;" data-i18n="btn_cancel">Annulla</button>
+            <button id="multi-send-btn" class="btn-save" style="flex:1;" data-i18n="btn_send_requests">Invia richieste</button>
+          </div>
+        </div>
+      </div>
+      <!-- Change Password Modal -->
+      <div id="change-password-modal" class="modal-overlay hidden">
+        <div class="modal">
+          <h3 data-i18n="change_password_title">Cambia password</h3>
+          <input type="password" id="current-password" data-i18n-placeholder="current_password_placeholder" placeholder="Password attuale" />
+          <input type="password" id="new-password" data-i18n-placeholder="new_password_placeholder" placeholder="Nuova password" />
+          <input type="password" id="confirm-password" data-i18n-placeholder="confirm_password_placeholder" placeholder="Conferma nuova password" />
+          <p id="change-password-error" class="error"></p>
+          <p id="change-password-success" class="success"></p>
+          <button id="submit-change-password" class="btn-save" data-i18n="profile_save">Salva modifiche</button>
+          <button id="close-change-password-modal" class="secondary" data-i18n="btn_close">Chiudi</button>
+        </div>
+      </div>
+      <!-- New Chat Modal -->
+      <div id="new-chat-modal" class="modal-overlay hidden">
+        <div class="modal">
+          <h3 data-i18n="new_chat_modal_title"></h3>
+          <div id="new-chat-list" class="modal-contact-list"></div>
+          <button id="close-new-chat-modal" class="secondary" data-i18n="btn_close"></button>
+        </div>
+      </div>
+      <!-- Group Chat Modal -->
+      <div id="group-chat-modal" class="modal-overlay hidden">
+        <div class="modal">
+          <h3 data-i18n="group_chat_modal_title">Crea chat di gruppo</h3>
+          <p data-i18n="group_chat_modal_subtitle">Seleziona i contatti online</p>
+          <div id="group-chat-contact-list" class="modal-contact-list"></div>
+          <div style="margin-top:12px; display:flex; gap:8px; justify-content:center;">
+            <button id="close-group-chat-modal" class="secondary" data-i18n="btn_close" style="flex:1;">Chiudi</button>
+            <button id="create-group-btn" class="btn-save" data-i18n="group_create_btn" style="flex:1;">Crea gruppo</button>
+          </div>
+          <p id="group-error" class="error" style="display:none;text-align:center;"></p>
+        </div>
+      </div>
+      <!-- Modale gestione chiavi API -->
+      <div id="api-keys-modal" class="modal-overlay hidden">
+        <div class="modal">
+          <h3 data-i18n="api_keys_modal_title">Gestisci chiavi API</h3>
+          <div class="form-group">
+            <input type="text" id="new-api-key-input" data-i18n-placeholder="new_api_key_placeholder" autocomplete="off" spellcheck="false" style="-webkit-text-security: disc;" />
+            <button type="button" id="add-api-key-btn" class="btn-small btn-add-api" data-i18n="add_api_key_btn">Aggiungi</button>
+          </div>
+          <ul id="api-keys-list" class="contacts-list"></ul>
+          <div class="modal-actions" style="display: flex; justify-content: center;">
+            <button type="button" id="close-api-keys-modal" class="btn-small" data-i18n="btn_close">Chiudi</button>
+           </div>
+        </div>
+      </div>
+      <!-- Admin: richieste di registrazione -->
+      <div id="admin-requests-panel" class="admin-panel">
+        <!-- Header con freccia e titolo -->
+        <div class="admin-panel-header">
+          <button id="admin-back-btn" class="btn-back-arrow">←</button>
+          <h1 class="admin-panel-title">Utenti registrati</h1>
+          <div class="admin-header-placeholder"></div>
+        </div>
+
+        <!-- Riga ricerca + toggle -->
+        <div class="admin-search-row">
+          <input type="text" id="admin-search-input" class="admin-search-input" placeholder="🔍 Cerca username...">
+          <label class="admin-toggle-label">
+            <span>Pending only</span>
+            <div class="toggle-switch">
+              <input type="checkbox" id="admin-filter-inactive">
+              <span class="toggle-slider"></span>
+            </div>
+          </label>
+        </div>
+
+        <!-- Riga tre pulsanti -->
+        <div class="admin-buttons-row">
+          <button id="admin-force-mode-btn" class="btn-save admin-action-btn">Force</button>
+          <button id="admin-notify-same-lang-btn" class="btn-save admin-action-btn">Notifica</button>
+          <button id="admin-notify-all-btn" class="btn-save admin-action-btn">Notify All</button>
+        </div>
+
+        <!-- Lista utenti -->
+        <div id="admin-requests-list" class="admin-users-list"></div>
+      </div>
+      <!-- Lightbox per immagini -->
+      <div id="lightbox" class="lightbox" style="display:none">
+        <span id="lightbox-close" class="lightbox-close">&times;</span>
+        <img id="lightbox-img" src="" alt="" />
+        <video id="lightbox-video" controls style="display:none; max-width:90%; max-height:90%;"></video>
+      </div>
+    </div>
+    <script src="i18n.js"></script>
+    <script src="themes.js"></script>
+    <script src="crypto.js"></script>
+    <script src="app.js"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+      }
+    </script>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <!-- Terms of Service Modal -->
+    <div id="terms-modal" class="modal-overlay hidden">
+      <div class="modal">
+        <h3 data-i18n="terms_title">Condizioni di utilizzo</h3>
+        <div id="terms-text" class="terms-text" data-i18n="terms_text"></div>
+        <div class="terms-footer">
+          <div class="terms-checkbox-row">
+            <input type="checkbox" id="terms-checkbox" disabled />
+            <label for="terms-checkbox" data-i18n="terms_accept_label">Dichiaro di aver letto e accettato le condizioni</label>
+          </div>
+          <p class="terms-hint" data-i18n="terms_scroll_hint">🔽 Scorri fino in fondo per attivare l'accettazione</p>
+          <button id="terms-confirm-btn" class="btn-save" disabled data-i18n="terms_confirm_btn">Accetta e registrati</button>
+          <button id="terms-cancel-btn" class="secondary" data-i18n="btn_cancel">Annulla</button>
+        </div>
+      </div>
+    </div>
+    <!-- Modale per invio notifica massiva -->
+    <div id="admin-notify-modal" class="modal-overlay hidden">
+      <div class="modal">
+        <h3>Invia notifica a tutti gli utenti</h3>
+        <textarea id="admin-notify-message" class="chat-textarea" rows="3" placeholder="Scrivi il messaggio da inviare..."></textarea>
+        <div style="display:flex; gap:8px; margin-top:16px;">
+          <button id="admin-notify-cancel" class="secondary" style="flex:1;">Annulla</button>
+          <button id="admin-notify-submit" class="btn-save" style="flex:1;">Invia</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

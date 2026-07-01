@@ -1,6 +1,7 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
@@ -18,8 +19,20 @@ import translateRoutes from './routes/translate';
 import apiKeysRoutes from './routes/apiKeys';
 import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
+import mediaRoutes from './routes/media';
+import uploadRoutes from './routes/upload';
 
 dotenv.config();
+console.log('ENCRYPTION_KEY loaded?', !!process.env.ENCRYPTION_KEY);
+console.log('ENCRYPTION_IV loaded?', !!process.env.ENCRYPTION_IV);
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('Current directory:', __dirname);
+// Verifica configurazione storage S3
+if (!process.env.S3_ENDPOINT || !process.env.S3_ACCESS_KEY_ID || !process.env.S3_SECRET_ACCESS_KEY || !process.env.S3_BUCKET) {
+  console.warn('⚠️  Configurazione S3 incompleta. Lo storage dei file non funzionerà.');
+} else {
+  console.log('✅ Configurazione S3 trovata');
+}
 console.log('ENCRYPTION_KEY defined?', !!process.env.ENCRYPTION_KEY);
 console.log('ENCRYPTION_IV defined?', !!process.env.ENCRYPTION_IV);
 
@@ -38,9 +51,10 @@ app.use(
           'ws://localhost:3001',
           'wss://localhost:3001',
           'https://cdn.socket.io',
+          'http://localhost:9000',
         ],
-        mediaSrc: ["'self'", 'blob:', 'data:'],
-        imgSrc: ["'self'", 'data:', 'blob:'],
+        mediaSrc: ["'self'", 'blob:', 'data:', 'http://localhost:9000'],
+        imgSrc: ["'self'", 'data:', 'blob:', 'http://localhost:9000'],
       },
     },
     crossOriginEmbedderPolicy: false,
@@ -88,18 +102,6 @@ const generalLimiter = rateLimit({
   message: { error: 'Troppe richieste. Riprova più tardi.' },
 });
 app.use(express.static('client'));
-/*
-app.use((req, res, next) => {
-  if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
-    const origin = req.get('origin');
-    const allowedOrigin = process.env.CORS_ORIGIN || 'http://localhost:3001';
-    if (origin && origin !== allowedOrigin) {
-      return res.status(403).json({ error: 'Origine non autorizzata' });
-    }
-  }
-  next();
-});
-*/
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/contacts', contactsRoutes);
@@ -107,11 +109,6 @@ app.use('/api/chats', chatsRoutes);
 const conversationLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 1000,
-  keyGenerator: (req, _res) => {
-    const userId = (req as any).userId;
-    if (userId) return userId;
-    return req.ip || 'unknown';
-  },
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Hai superato il limite di 10 messaggi al minuto.' },
@@ -119,6 +116,8 @@ const conversationLimiter = rateLimit({
 app.use('/api/conversation', conversationRoutes);
 app.use('/api/translate', translateRoutes);
 app.use('/api/auth', apiKeysRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/media', mediaRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 
@@ -391,7 +390,7 @@ io.on('connection', (socket) => {
   socket.on('group_message', async (data) => {
     const group = activeGroups.get(data.groupId);
     if (!group || !group.members.has(userId)) {
-      socket.emit('group_error', { message: 'Non fai parte del gruppo' });
+      socket.emit('group_error', { message: 'Non fai parte del gruppo', messageId: data.messageId });
       return;
     }
 
@@ -401,7 +400,7 @@ io.on('connection', (socket) => {
     );
 
     if (!hasActiveListener) {
-      socket.emit('group_error', { message: 'Nessun utente disponibile per ricevere messaggi in modalità Ghost' });
+      socket.emit('group_error', { message: 'Nessun utente disponibile per ricevere messaggi in modalità Ghost', messageId: data.messageId });
       return;
     }
 

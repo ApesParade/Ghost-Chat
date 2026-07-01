@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -121,10 +121,11 @@ model Message {
   created_at        DateTime  @default(now())
   expires_at        DateTime?
   is_encrypted      Boolean   @default(false)
-  reactions         String?   // JSON array di { emoji, userId }
+  reactions         String?
   type              String    @default("text")
-  audio_data        String?
-  image_data        String?
-  video_data        String?
+  file_key          String?   // Nuovo campo: chiave del file su S3/R2
+  video_data        String?   // nuovo: payload cifrato per video
+  encryptedPayload  String?   // payload cifrato E2E per file binari (immagini, audio, video)
+  audio_data        String?   // nuovo: payload cifrato per note vocali
   @@index([conversation_id, created_at])
 }

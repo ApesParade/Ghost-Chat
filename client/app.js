@@ -310,6 +310,44 @@ let receivedImageCache = new Map(); // messageId -> image_data (JSON string se c
 let sentVideoCache = new Map(); // messageId -> base64 string del video (per mittente)
 let receivedVideoCache = new Map(); // messageId -> video_data (JSON string se cifrato, base64 se chiaro)
 let receivedVideoThumbnailCache = new Map(); // messageId -> base64 della thumbnail decifrata
+
+// Helper: cifra un blob multimediale con AES-GCM (chiave usa-e-getta)
+// Restituisce { encryptedBlob, keyBase64, ivBase64 }
+async function encryptMediaBlob(blob) {
+  const symmetricKey = await crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const arrayBuffer = await blob.arrayBuffer();
+  const encryptedBuffer = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    symmetricKey,
+    arrayBuffer
+  );
+  const exportedKey = await crypto.subtle.exportKey('raw', symmetricKey);
+  const keyBytes = new Uint8Array(exportedKey);
+  return {
+    encryptedBlob: new Blob([encryptedBuffer], { type: blob.type }),
+    keyBase64: arrayBufferToBase64(keyBytes),
+    ivBase64: arrayBufferToBase64(iv)
+  };
+}
+
+// Helper: decifra un buffer cifrato e restituisce un Blob
+async function decryptMediaBlob(encryptedBuffer, keyBase64, ivBase64, mimeType) {
+  const keyArray = base64ToArrayBuffer(keyBase64);
+  const ivArray = base64ToArrayBuffer(ivBase64);
+  const cryptoKey = await crypto.subtle.importKey('raw', keyArray, { name: 'AES-GCM' }, false, ['decrypt']);
+  const decryptedBuffer = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: ivArray },
+    cryptoKey,
+    encryptedBuffer
+  );
+  return new Blob([decryptedBuffer], { type: mimeType });
+}
+
 // LRU helpers per limitare la memoria
 function lruGet(map, key) {
   if (!map.has(key)) return undefined;
@@ -489,6 +527,7 @@ function showMainScreen() {
           currentGroupId = savedState.groupId;
           currentGroupMembers = savedState.members;
           showGroupChatUI(savedState.groupId, savedState.members);
+          if (socket && socket.connected) socket.emit('group_chat_opened', { groupId: savedState.groupId });
           if (socket && socket.connected) {
             socket.emit('join_group', { groupId: savedState.groupId });
           }
@@ -864,14 +903,23 @@ function initSocket() {
       updateBannerIfVisible();
 
       if (data.type === 'voice_note') {
+          if (data.encryptedPayload) {
+              receivedAudioCache.set(data.messageId, data.encryptedPayload);
+          }
           if (confirm(t('voice_note_confirm', { name }))) {
               openChat(data.senderId, name);
           }
       } else if (data.type === 'image') {
+          if (data.encryptedPayload) {
+              receivedImageCache.set(data.messageId, data.encryptedPayload);
+          }
           if (confirm(t('confirm_image_message', { name }))) {
               openChat(data.senderId, name);
           }
       } else if (data.type === 'video') {
+          if (data.encryptedPayload) {
+            lruSet(receivedVideoCache, data.messageId, data.encryptedPayload, 5);
+          }
           if (confirm(t('confirm_video_message', { name }))) {
               openChat(data.senderId, name);
           }
@@ -893,27 +941,56 @@ function initSocket() {
       }
   });
   socket.on('ephemeral_message', async (data) => {
-    let displayData = null;
     const type = data.type || 'text';
-    if (data.encryptedPayload && ecdhPrivateKey) {
-      try {
+    if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
+    if (!ecdhPrivateKey) return;
+
+    let displayData = null;
+    try {
+      if (type === 'text') {
+        displayData = await decryptMessage(data.encryptedPayload, ecdhPrivateKey);
+      } else if (type === 'voice_note' || type === 'image' || type === 'video') {
+        // Decifra il bigliettino
+        const decrypted = await decryptMessage(data.encryptedPayload, ecdhPrivateKey);
+        const payload = JSON.parse(decrypted);
+
         if (type === 'voice_note') {
-          const audioBuffer = await decryptAudio(data.encryptedPayload, ecdhPrivateKey);
-          const blob = new Blob([audioBuffer], { type: 'audio/webm' });
+          const res = await apiCall(`/media/${encodeURIComponent(payload.fileKey)}`);
+          if (!res.ok) throw new Error('Errore recupero URL audio');
+          const { url } = await res.json();
+          const resp = await fetch(url);
+          const encryptedBuffer = await resp.arrayBuffer();
+          const blob = await decryptMediaBlob(encryptedBuffer, payload.key, payload.iv, 'audio/webm');
           displayData = URL.createObjectURL(blob);
-        } else {
-          displayData = await decryptMessage(data.encryptedPayload, ecdhPrivateKey);
+        } else if (type === 'image') {
+          const res = await apiCall(`/media/${encodeURIComponent(payload.fileKey)}`);
+          if (!res.ok) throw new Error('Errore recupero URL immagine');
+          const { url } = await res.json();
+          const resp = await fetch(url);
+          const encryptedBuffer = await resp.arrayBuffer();
+          const blob = await decryptMediaBlob(encryptedBuffer, payload.key, payload.iv, 'image/jpeg');
+          displayData = URL.createObjectURL(blob);
+        } else if (type === 'video') {
+          // Per video, mostriamo solo la thumbnail come placeholder; il video completo sarà decifrato al click (gestito altrove)
+          // Ma per semplificare, qui mostriamo direttamente il video decifrato (o potremmo mostrare thumbnail e poi decifrare on‑demand)
+          // Adottiamo la stessa logica del singolo: scarichiamo e decifriamo il video e thumbnail, poi passiamo il video URL
+          const videoRes = await apiCall(`/media/${encodeURIComponent(payload.videoFileKey)}`);
+          if (!videoRes.ok) throw new Error('Errore video');
+          const { url: videoUrl } = await videoRes.json();
+          const videoResp = await fetch(videoUrl);
+          const encryptedVideoBuffer = await videoResp.arrayBuffer();
+          const videoBlob = await decryptMediaBlob(encryptedVideoBuffer, payload.videoKey, payload.videoIv, 'video/mp4');
+          displayData = URL.createObjectURL(videoBlob);
+          // Thumbnail non usata per l'effimero, ma potremmo salvarla in sessionStorage per coerenza
         }
-      } catch (e) {
-        console.error('Decifratura messaggio effimero fallita', e);
-        displayData = type === 'text' ? '[Decifratura fallita]' : null;
       }
-    } else {
+    } catch (e) {
+      console.error('Decifratura messaggio effimero fallita', e);
+      displayData = type === 'text' ? '[Decifratura fallita]' : null;
     }
-    if (currentChatContactId === data.senderId) {
-      if (displayData) {
-        displayEphemeralMessage('received', data.messageId, type, displayData);
-      }
+
+    if (currentChatContactId === data.senderId && displayData) {
+      displayEphemeralMessage('received', data.messageId, type, displayData);
     }
   });
   socket.on('ephemeral_error', (data) => {
@@ -941,6 +1018,7 @@ function initSocket() {
         currentGroupId = groupId;
         currentGroupMembers = members;
         showGroupChatUI(groupId, members);
+        if (socket && socket.connected) socket.emit('group_chat_opened', { groupId });
       }, 200);
     } else {
       groupInvites.delete(groupId);
@@ -951,6 +1029,7 @@ function initSocket() {
     currentGroupId = data.groupId;
     currentGroupMembers = data.members;
     showGroupChatUI(data.groupId, data.members);
+    if (socket && socket.connected) socket.emit('group_chat_opened', { groupId: data.groupId });
     displayMessage(
       t('group_notification_created'),
       'system',
@@ -1021,6 +1100,10 @@ function initSocket() {
       message = data.message || t('error_generic');
     }
     alert(message);
+    if (data.messageId) {
+      const msgEl = document.getElementById('message-' + data.messageId);
+      if (msgEl) msgEl.remove();
+    }
   });
 
   socket.on('group_message', async (data) => {
@@ -1043,12 +1126,18 @@ function initSocket() {
       }
 
       if (type === 'text') {
-        // Decifra payload testo
+        let myPayload = data.encryptedPayload;
+        if (myPayload && typeof myPayload === 'object' && myPayload[currentUser.id]) {
+          myPayload = myPayload[currentUser.id];
+        }
         let displayText = '';
-        if (data.encryptedPayload && typeof data.encryptedPayload === 'object') {
-          displayText = await decryptMessage(data.encryptedPayload, ecdhPrivateKey);
-        } else if (typeof data.encryptedPayload === 'string') {
-          displayText = data.encryptedPayload; // retrocompatibilità
+        if (myPayload && typeof myPayload === 'string') {
+          try {
+            displayText = await decryptMessage(myPayload, ecdhPrivateKey);
+          } catch (e) {
+            console.error('Decifratura testo gruppo fallita', e);
+            displayText = '[Decifratura fallita]';
+          }
         } else {
           displayText = '[cifrato]';
         }
@@ -1062,30 +1151,13 @@ function initSocket() {
           senderName
         );
       } else if (type === 'voice_note') {
-        // Normalizza encryptedPayload: potrebbe arrivare come stringa JSON dal server
-        let payloadObj = data.encryptedPayload;
-        if (typeof payloadObj === 'string') {
-          try {
-            payloadObj = JSON.parse(payloadObj);
-          } catch (e) {
-            console.error('Errore parsing encryptedPayload per voice_note', e);
-            payloadObj = null;
-          }
+        let myPayload = data.encryptedPayload;
+        // Estrai payload per l'utente corrente
+        if (myPayload && typeof myPayload === 'object' && myPayload[currentUser.id]) {
+          myPayload = myPayload[currentUser.id];
         }
-        let myPayload = null;
-        if (payloadObj && typeof payloadObj === 'object' && payloadObj[currentUser.id]) {
-          // Caso 1: oggetto con chiavi per ogni membro
-          myPayload = payloadObj[currentUser.id];
-        } else if (payloadObj && typeof payloadObj === 'string') {
-          // Caso 2: stringa già pronta per la decifratura
-          myPayload = payloadObj;
-        } else if (payloadObj && typeof payloadObj === 'object' && !payloadObj[currentUser.id]) {
-          // Caso 3: oggetto payload diretto (es. { ciphertext, iv }), non un multi‑utente
-          myPayload = payloadObj;
-        }
-
         if (myPayload) {
-          receivedAudioCache.set(data.messageId, JSON.stringify(myPayload));
+          receivedAudioCache.set(data.messageId, myPayload);
         } else {
           console.error('Payload audio non trovato per utente corrente');
         }
@@ -1097,7 +1169,13 @@ function initSocket() {
           senderName
         );
       } else if (type === 'image') {
-        receivedImageCache.set(data.messageId, JSON.stringify(data.encryptedPayload));
+        let myPayload = data.encryptedPayload;
+        if (myPayload && typeof myPayload === 'object' && myPayload[currentUser.id]) {
+          myPayload = myPayload[currentUser.id];
+        }
+        if (myPayload) {
+          receivedImageCache.set(data.messageId, myPayload);
+        }
         displayImageMessage(
           'received',
           data.messageId,
@@ -1107,7 +1185,13 @@ function initSocket() {
           true
         );
       } else if (type === 'video') {
-        receivedVideoCache.set(data.messageId, JSON.stringify(data.encryptedPayload));
+        let myPayload = data.encryptedPayload;
+        if (myPayload && typeof myPayload === 'object' && myPayload[currentUser.id]) {
+          myPayload = myPayload[currentUser.id];
+        }
+        if (myPayload) {
+          lruSet(receivedVideoCache, data.messageId, myPayload, 5);
+        }
         displayVideoMessage(
           'received',
           data.messageId,
@@ -1851,7 +1935,7 @@ function setupMessageListListeners(listId) {
     e.stopPropagation();
     const msgId = playBtn.dataset.messageId;
     if (!msgId) return;
-    await playReceivedVoiceNote(msgId);
+    await playVoiceNote(msgId);
   });
 
   // Apertura lightbox per immagini/video/placeholder
@@ -1872,34 +1956,10 @@ function setupMessageListListeners(listId) {
       if (!messageItem) return;
       const msgId = messageItem.dataset.messageId;
       if (!msgId) return;
-      const data = lruGet(receivedVideoCache, msgId);
-      if (!data) {
+      const fileKey = wrapper.dataset.fileKey || lruGet(receivedVideoCache, msgId);
+      if (!fileKey) {
         alert(t('alert_data_not_available'));
         return;
-      }
-      try {
-        let payload;
-        try {
-          payload = JSON.parse(data);
-        } catch {
-          alert(t('alert_decryption_failed'));
-          return;
-        }
-        const videoCipher = payload.video;
-        if (!videoCipher) {
-          alert(t('alert_data_not_available'));
-          return;
-        }
-        if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
-        if (!ecdhPrivateKey) {
-          alert(t('error_private_key_missing'));
-          return;
-        }
-        const decryptedVideo = await decryptMessage(videoCipher, ecdhPrivateKey);
-        showLightbox(decryptedVideo, 'video');
-      } catch (err) {
-        console.error(err);
-        alert(t('alert_decryption_failed'));
       }
     } else if (videoPlaceholder) {
       // Fallback per vecchi placeholder testuali (non più utilizzati nei nuovi messaggi)
@@ -1911,21 +1971,6 @@ function setupMessageListListeners(listId) {
       if (!data) {
         alert(t('alert_data_not_available'));
         return;
-      }
-      // Prova a decifrare il video e mostra in lightbox (vecchia logica semplificata)
-      try {
-        const payload = JSON.parse(data);
-        const videoCipher = payload.video || payload;
-        if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
-        if (!ecdhPrivateKey) {
-          alert(t('error_private_key_missing'));
-          return;
-        }
-        const decrypted = await decryptMessage(videoCipher, ecdhPrivateKey);
-        showLightbox(decrypted, 'video');
-      } catch (err) {
-        console.error(err);
-        alert(t('alert_decryption_failed'));
       }
     }
   });
@@ -1978,6 +2023,49 @@ function setupMessageListListeners(listId) {
     }
   });
 }
+
+document.addEventListener('click', (e) => {
+  const videoWrapper = e.target.closest('.video-thumbnail-wrapper');
+  if (videoWrapper) {
+    const videoFileKey = videoWrapper.dataset.videoFileKey;
+    const videoKey = videoWrapper.dataset.videoKey;
+    const videoIv = videoWrapper.dataset.videoIv;
+    if (!videoFileKey || !videoKey || !videoIv) return;
+    if (videoWrapper.querySelector('video')) return; // già in riproduzione
+
+    (async () => {
+      try {
+        const res = await apiCall(`/media/${encodeURIComponent(videoFileKey)}`);
+        if (!res.ok) return;
+        const { url } = await res.json();
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('Download video cifrato fallito');
+        const encryptedBuffer = await resp.arrayBuffer();
+        const blob = await decryptMediaBlob(encryptedBuffer, videoKey, videoIv, 'video/mp4');
+        const objectUrl = URL.createObjectURL(blob);
+        const videoEl = document.createElement('video');
+        videoEl.src = objectUrl;
+        videoEl.controls = true;
+        videoEl.className = 'message-video';
+        videoEl.style.maxWidth = '200px';
+        videoEl.style.maxHeight = '200px';
+        videoEl.autoplay = true;
+        videoWrapper.innerHTML = '';
+        videoWrapper.appendChild(videoEl);
+      } catch (err) {
+        console.error('Riproduzione video fallita', err);
+      }
+    })();
+    return;
+  }
+
+  const voiceSpan = e.target.closest('.voice-note-play');
+  if (voiceSpan) {
+    const msgId = voiceSpan.dataset.messageId;
+    if (msgId) playVoiceNote(msgId);
+    return;
+  }
+});
 
 // Swipe per cancellare messaggi inviati (da sinistra a destra) + long‑press per emoji
 function enableSwipeAndEmojiOnMessages() {
@@ -2518,7 +2606,6 @@ async function sendVoiceNote(audioBlob, target = null) {
     const groupId = target.groupId;
     const members = target.members;
     if (!groupId || members.length === 0) return;
-    // Controllo per guest in gruppo multilingua
     if (currentUser && !currentUser.has_api_key) {
       const memberLanguages = await Promise.all([currentUser.language_code, ...members.map(m => fetchUserLanguage(m))]);
       const uniqueLangs = new Set(memberLanguages);
@@ -2528,51 +2615,55 @@ async function sendVoiceNote(audioBlob, target = null) {
       }
     }
     checkMediaExpiryWarning();
-    const arrayBuffer = await audioBlob.arrayBuffer();
+    
+    // Cifra e carica audio
+    const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(audioBlob);
+    const mimeType = audioBlob.type || 'audio/webm';
+    const { uploadUrl, fileKey } = await getPresignedUploadUrl('audio', mimeType);
+    await fetch(uploadUrl, { method: 'PUT', body: encryptedBlob, headers: { 'Content-Type': mimeType } });
+
+    const plainPayload = { fileKey, iv: ivBase64, key: keyBase64 };
     const encryptedPayload = {};
     for (const memberId of members) {
       if (memberId === currentUser.id) continue;
-      const pubKeyJwk = await fetchContactPublicKey(memberId);
-      if (!pubKeyJwk) {
-        alert(t('error_missing_public_key', { memberId }));
-        return;
-      }
-      const recipientPubKey = await importPublicKey(pubKeyJwk);
-      if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
-      if (!ecdhPrivateKey) {
-        alert(t('error_private_key_missing'));
-        return;
-      }
-      encryptedPayload[memberId] = await encryptAudio(arrayBuffer, ecdhPrivateKey, recipientPubKey);
+      const memberPubKeyStr = await fetchContactPublicKey(memberId);
+      if (!memberPubKeyStr) continue;
+      const memberPubKey = await importPublicKey(memberPubKeyStr);
+      const encrypted = await encryptMessage(JSON.stringify(plainPayload), ecdhPrivateKey, memberPubKey);
+      encryptedPayload[memberId] = encrypted;
     }
     const messageId = 'gmsg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     socket.emit('group_message', { groupId, encryptedPayload, messageId, type: 'voice_note' });
 
-    // Salva in cache il blob per la riproduzione futura (se il gruppo la supporta)
     const reader = new FileReader();
     reader.onloadend = () => {
       sentAudioCache.set(messageId, reader.result);
     };
     reader.readAsDataURL(audioBlob);
 
-    // Mostra il messaggio inviato nel contenitore del gruppo
     displayVoiceNoteMessage('sent', messageId, null, 'group-messages-list');
     return;
   }
 
-  // ─────────── INVIO SINGOLO (codice originale) ───────────
+  // ─────────── INVIO SINGOLO ───────────
   if (!currentChatContactId) return;
   checkMediaExpiryWarning();
-  // Controllo per guest con lingua diversa (chat singola)
   if (currentUser && !currentUser.has_api_key && currentChatContactLanguage && currentChatContactLanguage !== currentUser.language_code) {
     alert(t('error_guest_diff_language'));
     return;
   }
+  
   if (ephemeralMode) {
     const recipientPubKey = await prepareEphemeralPayload(currentChatContactId);
     if (!recipientPubKey) return;
-    const arrayBuffer = await audioBlob.arrayBuffer();
-    const encryptedPayload = await encryptAudio(arrayBuffer, ecdhPrivateKey, recipientPubKey);
+
+    const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(audioBlob);
+    const mimeType = audioBlob.type || 'audio/webm';
+    const { uploadUrl, fileKey } = await getPresignedUploadUrl('audio', mimeType);
+    await fetch(uploadUrl, { method: 'PUT', body: encryptedBlob, headers: { 'Content-Type': mimeType } });
+
+    const plainPayload = { fileKey, iv: ivBase64, key: keyBase64 };
+    const encryptedPayload = await encryptMessage(JSON.stringify(plainPayload), ecdhPrivateKey, recipientPubKey);
     const tempId = 'eph_' + Date.now();
     socket.emit('ephemeral_message', {
       recipientId: currentChatContactId,
@@ -2597,9 +2688,24 @@ async function sendVoiceNote(audioBlob, target = null) {
       return;
     }
 
+    // Cifra il blob audio con chiave simmetrica usa‑e‑getta
+    const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(audioBlob);
+    const mimeType = audioBlob.type || 'audio/webm';
+
+    // Carica il blob già cifrato su MinIO
+    const { uploadUrl, fileKey } = await getPresignedUploadUrl('audio', mimeType);
+    await fetch(uploadUrl, { method: 'PUT', body: encryptedBlob, headers: { 'Content-Type': mimeType } });
+
+    // Prepara il bigliettino con le informazioni per decifrare
+    const plainPayload = {
+      fileKey,
+      iv: ivBase64,
+      key: keyBase64
+    };
+
+    // Cifra il bigliettino con la chiave pubblica del destinatario
     const recipientPubKey = await importPublicKey(contactPublicKey);
-    const arrayBuffer = await audioBlob.arrayBuffer();
-    const encryptedPayload = await encryptAudio(arrayBuffer, ecdhPrivateKey, recipientPubKey);
+    const encryptedPayload = await encryptMessage(JSON.stringify(plainPayload), ecdhPrivateKey, recipientPubKey);
 
     const res = await apiCall('/conversation/send-voice-note', {
       method: 'POST',
@@ -2612,6 +2718,7 @@ async function sendVoiceNote(audioBlob, target = null) {
     }
     const data = await res.json();
 
+    // Salva in cache il blob in chiaro per la visualizzazione lato mittente
     const reader = new FileReader();
     reader.onloadend = () => {
       sentAudioCache.set(data.messageId, reader.result);
@@ -2620,6 +2727,7 @@ async function sendVoiceNote(audioBlob, target = null) {
 
     displayVoiceNoteMessage('sent', data.messageId, data.expiresAt);
   } catch (err) {
+    console.error(err);
     showNetworkError('error_voice_note_network');
   }
 }
@@ -2657,29 +2765,6 @@ function displayVoiceNoteMessage(
   });
 }
 
-async function playReceivedVoiceNote(messageId) {
-  const audioDataStr = receivedAudioCache.get(messageId);
-  if (!audioDataStr) {
-    alert(t('error_audio_data_unavailable'));
-    return;
-  }
-  try {
-    const encryptedPayload = JSON.parse(audioDataStr);
-    if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
-    if (!ecdhPrivateKey) {
-      alert(t('error_private_key_missing'));
-      return;
-    }
-    const audioBuffer = await decryptAudio(encryptedPayload, ecdhPrivateKey);
-    const blob = new Blob([audioBuffer], { type: 'audio/webm' });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.play();
-  } catch (err) {
-    console.error(err);
-    alert(t('error_audio_decrypt'));
-  }
-}
 
 function displayEphemeralMessage(direction, messageId, type, data) {
   let content = '';
@@ -2995,6 +3080,29 @@ async function apiCall(endpoint, options = {}) {
   return res;
 }
 
+function base64ToBlob(base64, mimeType) {
+  const byteCharacters = atob(base64.split(',')[1] || base64);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type: mimeType });
+}
+
+// Ottiene un URL firmato per l'upload diretto
+async function getPresignedUploadUrl(type, mimeType) {
+  const res = await apiCall('/upload/request', {
+    method: 'POST',
+    body: JSON.stringify({ type, mimeType })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Errore nella generazione URL upload');
+  }
+  return await res.json();
+}
+
 // ========== CRONOLOGIA MESSAGGI ==========
 
 async function translateAndUpdateMessage(messageId, originalText, sourceLang, targetLang) {
@@ -3041,16 +3149,16 @@ async function loadMessages(contactId, before = null) {
     if (!res.ok) throw new Error('Errore');
     const data = await res.json();
 
-    // Popola cache audio ricevuti
+    // Popola cache dei media ricevuti usando file_key
     (data.messages || []).forEach((m) => {
-      if (m.type === 'voice_note' && m.direction === 'received' && m.audio_data) {
-        receivedAudioCache.set(m.id, m.audio_data);
+      if (m.type === 'voice_note' && m.direction === 'received' && m.file_key) {
+        receivedAudioCache.set(m.id, m.file_key); // salviamo la chiave, non i dati
       }
-      if (m.type === 'image' && m.direction === 'received' && m.image_data) {
-        receivedImageCache.set(m.id, m.image_data);
+      if (m.type === 'image' && m.direction === 'received' && m.file_key) {
+        receivedImageCache.set(m.id, m.file_key);
       }
-      if (m.type === 'video' && m.direction === 'received' && m.video_data) {
-        lruSet(receivedVideoCache, m.id, m.video_data, 5);
+      if (m.type === 'video' && m.direction === 'received' && m.file_key) {
+        lruSet(receivedVideoCache, m.id, m.file_key, 5);
       }
     });
 
@@ -3206,6 +3314,7 @@ function renderMessages(messages) {
       const readStatus = renderReadStatus(m.direction, m.read_at);
       const readClass = m.read_at ? 'read' : '';
 
+      // Tipo: video
       if (m.type === 'video') {
         let videoContent = '';
         if (m.direction === 'sent') {
@@ -3213,27 +3322,15 @@ function renderMessages(messages) {
           if (cached) {
             videoContent = `<video controls src="${escapeHtml(cached)}" class="message-video" style="max-width:200px; max-height:200px;"></video>`;
           } else {
-            const thumb = sessionStorage.getItem('thumb_' + m.id);
-            if (thumb) {
-              videoContent = `<div class="video-thumbnail-wrapper" data-message-id="${m.id}">
-                                <img src="${thumb}" alt="Video thumbnail" style="display:block;" />
-                                <div class="play-overlay">
-                                  <svg viewBox="0 0 48 48" width="36" height="36">
-                                    <circle cx="24" cy="24" r="22" fill="rgba(var(--shadow-dark-rgb), 0.45)" stroke="var(--text)" stroke-width="1.5"/>
-                                    <polygon points="19,15 19,33 33,24" fill="var(--text)"/>
-                                  </svg>
-                                </div>
-                              </div>`;
-            } else {
-              videoContent = t('video_sent');
-            }
+            videoContent = t('video_generic');
           }
         } else {
-          if (m.video_data) {
-            lruSet(receivedVideoCache, m.id, m.video_data, 5);
+          // Ricevuto: salva l'encryptedPayload nella cache
+          if (m.encryptedPayload) {
+            lruSet(receivedVideoCache, m.id, m.encryptedPayload, 5);
             videoContent = `
               <div class="video-thumbnail-wrapper" data-message-id="${m.id}">
-                <img src="" alt="Video thumbnail" style="display:none;" />
+                <img alt="Video thumbnail" style="display:none;" />
                 <div class="play-overlay">
                   <svg viewBox="0 0 48 48" width="36" height="36">
                     <circle cx="24" cy="24" r="22" fill="rgba(var(--shadow-dark-rgb), 0.45)" stroke="var(--text)" stroke-width="1.5"/>
@@ -3246,18 +3343,19 @@ function renderMessages(messages) {
           }
         }
         return `
-        <div class="message-item ${cls} ${readClass}" data-expires-at="${m.expiresAt || ''}" data-message-id="${m.id}" data-is-encrypted="${m.is_encrypted ? 'true' : 'false'}">
-          ${videoContent}
-          ${renderReactions(m.reactions)}
-          <div class="msg-meta">
-            <span>${time}</span>
-            <span>${expiryInfo} ${readStatus}</span>
-            <span class="speaker-icon" title="Ascolta"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:1em; height:1em; vertical-align:middle;"><path d="M16.881 4.345A23.112 23.112 0 0 1 8.25 6H7.5a5.25 5.25 0 0 0-.88 10.427 21.593 21.593 0 0 0 1.378 3.94c.464 1.004 1.674 1.32 2.582.796l.657-.379c.88-.508 1.165-1.593.772-2.468a17.116 17.116 0 0 1-.628-1.607c1.918.258 3.76.75 5.5 1.446A21.727 21.727 0 0 0 18 11.25c0-2.414-.393-4.735-1.119-6.905ZM18.26 3.74a23.22 23.22 0 0 1 1.24 7.51 23.22 23.22 0 0 1-1.41 7.992.75.75 0 1 0 1.409.516 24.555 24.555 0 0 0 1.415-6.43 2.992 2.992 0 0 0 .836-2.078c0-.807-.319-1.54-.836-2.078a24.65 24.65 0 0 0-1.415-6.43.75.75 0 1 0-1.409.516c.059.16.116.321.17.483Z" /></svg></span>
+          <div class="message-item ${cls} ${readClass}" data-expires-at="${m.expiresAt || ''}" data-message-id="${m.id}">
+            ${videoContent}
+            ${renderReactions(m.reactions)}
+            <div class="msg-meta">
+              <span>${time}</span>
+              <span>${expiryInfo} ${readStatus}</span>
+              <span class="speaker-icon" title="Ascolta"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:1em; height:1em; vertical-align:middle;"><path d="M16.881 4.345A23.112 23.112 0 0 1 8.25 6H7.5a5.25 5.25 0 0 0-.88 10.427 21.593 21.593 0 0 0 1.378 3.94c.464 1.004 1.674 1.32 2.582.796l.657-.379c.88-.508 1.165-1.593.772-2.468a17.116 17.116 0 0 1-.628-1.607c1.918.258 3.76.75 5.5 1.446A21.727 21.727 0 0 0 18 11.25c0-2.414-.393-4.735-1.119-6.905ZM18.26 3.74a23.22 23.22 0 0 1 1.24 7.51 23.22 23.22 0 0 1-1.41 7.992.75.75 0 1 0 1.409.516 24.555 24.555 0 0 0 1.415-6.43 2.992 2.992 0 0 0 .836-2.078c0-.807-.319-1.54-.836-2.078a24.65 24.65 0 0 0-1.415-6.43.75.75 0 1 0-1.409.516c.059.16.116.321.17.483Z" /></svg></span>
+            </div>
           </div>
-        </div>
-      `;
+        `;
       }
 
+      // Tipo: image
       if (m.type === 'image') {
         let imageContent = '';
         if (m.direction === 'sent') {
@@ -3268,11 +3366,17 @@ function renderMessages(messages) {
             imageContent = t('image_sent');
           }
         } else {
-          if (m.image_data && !m.is_encrypted) {
-            receivedImageCache.set(m.id, m.image_data);
-            imageContent = `<img src="${escapeHtml(m.image_data)}" class="message-image" alt="${t('lightbox_image_alt')}" />`;
-          } else if (m.is_encrypted && m.image_data) {
-            receivedImageCache.set(m.id, m.image_data);
+          // Ricevuto: usa encryptedPayload se disponibile
+          if (m.encryptedPayload) {
+            receivedImageCache.set(m.id, m.encryptedPayload);
+            imageContent = `
+              <div class="encrypted-image-wrapper" data-message-id="${m.id}">
+                <img src="" alt="${t('lightbox_image_alt')}" class="message-image" style="display:none;" />
+                <div class="spinner"></div>
+              </div>`;
+          } else if (m.file_key) {
+            // retrocompatibilità con vecchi messaggi in chiaro
+            receivedImageCache.set(m.id, m.file_key);
             imageContent = `
               <div class="encrypted-image-wrapper" data-message-id="${m.id}">
                 <img src="" alt="${t('lightbox_image_alt')}" class="message-image" style="display:none;" />
@@ -3283,18 +3387,19 @@ function renderMessages(messages) {
           }
         }
         return `
-        <div class="message-item ${cls} ${readClass}" data-expires-at="${m.expiresAt || ''}" data-message-id="${m.id}" data-is-encrypted="${m.is_encrypted ? 'true' : 'false'}">
-          ${imageContent}
-          ${renderReactions(m.reactions)}
-          <div class="msg-meta">
-            <span>${time}</span>
-            <span>${expiryInfo} ${readStatus}</span>
-            <span class="speaker-icon" title="Ascolta"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:1em; height:1em; vertical-align:middle;"><path d="M16.881 4.345A23.112 23.112 0 0 1 8.25 6H7.5a5.25 5.25 0 0 0-.88 10.427 21.593 21.593 0 0 0 1.378 3.94c.464 1.004 1.674 1.32 2.582.796l.657-.379c.88-.508 1.165-1.593.772-2.468a17.116 17.116 0 0 1-.628-1.607c1.918.258 3.76.75 5.5 1.446A21.727 21.727 0 0 0 18 11.25c0-2.414-.393-4.735-1.119-6.905ZM18.26 3.74a23.22 23.22 0 0 1 1.24 7.51 23.22 23.22 0 0 1-1.41 7.992.75.75 0 1 0 1.409.516 24.555 24.555 0 0 0 1.415-6.43 2.992 2.992 0 0 0 .836-2.078c0-.807-.319-1.54-.836-2.078a24.65 24.65 0 0 0-1.415-6.43.75.75 0 1 0-1.409.516c.059.16.116.321.17.483Z" /></svg></span>
+          <div class="message-item ${cls} ${readClass}" data-expires-at="${m.expiresAt || ''}" data-message-id="${m.id}">
+            ${imageContent}
+            ${renderReactions(m.reactions)}
+            <div class="msg-meta">
+              <span>${time}</span>
+              <span>${expiryInfo} ${readStatus}</span>
+              <span class="speaker-icon" title="Ascolta"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:1em; height:1em; vertical-align:middle;"><path d="M16.881 4.345A23.112 23.112 0 0 1 8.25 6H7.5a5.25 5.25 0 0 0-.88 10.427 21.593 21.593 0 0 0 1.378 3.94c.464 1.004 1.674 1.32 2.582.796l.657-.379c.88-.508 1.165-1.593.772-2.468a17.116 17.116 0 0 1-.628-1.607c1.918.258 3.76.75 5.5 1.446A21.727 21.727 0 0 0 18 11.25c0-2.414-.393-4.735-1.119-6.905ZM18.26 3.74a23.22 23.22 0 0 1 1.24 7.51 23.22 23.22 0 0 1-1.41 7.992.75.75 0 1 0 1.409.516 24.555 24.555 0 0 0 1.415-6.43 2.992 2.992 0 0 0 .836-2.078c0-.807-.319-1.54-.836-2.078a24.65 24.65 0 0 0-1.415-6.43.75.75 0 1 0-1.409.516c.059.16.116.321.17.483Z" /></svg></span>
+            </div>
           </div>
-        </div>
-      `;
+        `;
       }
 
+      // Tipo: voice_note
       if (m.type === 'voice_note') {
         let voiceContent = '';
         if (m.direction === 'sent') {
@@ -3305,19 +3410,22 @@ function renderMessages(messages) {
             voiceContent = t('voice_note_sent');
           }
         } else {
+          if (m.encryptedPayload) {
+            receivedAudioCache.set(m.id, m.encryptedPayload);
+          }
           voiceContent = `<span class="voice-note-play" data-message-id="${m.id}">${t('voice_note_listen')}</span>`;
         }
         return `
-        <div class="message-item ${cls} ${readClass}" data-expires-at="${m.expiresAt || ''}" data-message-id="${m.id}">
-          ${voiceContent}
-          ${renderReactions(m.reactions)}
-          <div class="msg-meta">
-            <span>${time}</span>
-            <span>${expiryInfo} ${readStatus}</span>
-            <span class="speaker-icon" title="Ascolta"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:1em; height:1em; vertical-align:middle;"><path d="M16.881 4.345A23.112 23.112 0 0 1 8.25 6H7.5a5.25 5.25 0 0 0-.88 10.427 21.593 21.593 0 0 0 1.378 3.94c.464 1.004 1.674 1.32 2.582.796l.657-.379c.88-.508 1.165-1.593.772-2.468a17.116 17.116 0 0 1-.628-1.607c1.918.258 3.76.75 5.5 1.446A21.727 21.727 0 0 0 18 11.25c0-2.414-.393-4.735-1.119-6.905ZM18.26 3.74a23.22 23.22 0 0 1 1.24 7.51 23.22 23.22 0 0 1-1.41 7.992.75.75 0 1 0 1.409.516 24.555 24.555 0 0 0 1.415-6.43 2.992 2.992 0 0 0 .836-2.078c0-.807-.319-1.54-.836-2.078a24.65 24.65 0 0 0-1.415-6.43.75.75 0 1 0-1.409.516c.059.16.116.321.17.483Z" /></svg></span>
+          <div class="message-item ${cls} ${readClass}" data-expires-at="${m.expiresAt || ''}" data-message-id="${m.id}">
+            ${voiceContent}
+            ${renderReactions(m.reactions)}
+            <div class="msg-meta">
+              <span>${time}</span>
+              <span>${expiryInfo} ${readStatus}</span>
+              <span class="speaker-icon" title="Ascolta"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:1em; height:1em; vertical-align:middle;"><path d="M16.881 4.345A23.112 23.112 0 0 1 8.25 6H7.5a5.25 5.25 0 0 0-.88 10.427 21.593 21.593 0 0 0 1.378 3.94c.464 1.004 1.674 1.32 2.582.796l.657-.379c.88-.508 1.165-1.593.772-2.468a17.116 17.116 0 0 1-.628-1.607c1.918.258 3.76.75 5.5 1.446A21.727 21.727 0 0 0 18 11.25c0-2.414-.393-4.735-1.119-6.905ZM18.26 3.74a23.22 23.22 0 0 1 1.24 7.51 23.22 23.22 0 0 1-1.41 7.992.75.75 0 1 0 1.409.516 24.555 24.555 0 0 0 1.415-6.43 2.992 2.992 0 0 0 .836-2.078c0-.807-.319-1.54-.836-2.078a24.65 24.65 0 0 0-1.415-6.43.75.75 0 1 0-1.409.516c.059.16.116.321.17.483Z" /></svg></span>
+            </div>
           </div>
-        </div>
-      `;
+        `;
       }
 
       // Messaggio di testo normale
@@ -3331,8 +3439,7 @@ function renderMessages(messages) {
         currentUser.language_code &&
         currentChatContactLanguage !== currentUser.language_code
       ) {
-        // Cross-language: mostra originale + traduzione
-        originalText = m.translated; // testo originale decifrato
+        originalText = m.translated;
         showOriginal = true;
         displayText = `<span class="msg-translation" data-message-id="${m.id}" data-original="${escapeHtml(originalText)}"><span class="spinner"></span> ${t('translating_placeholder')}</span>`;
       } else {
@@ -3345,19 +3452,20 @@ function renderMessages(messages) {
         : '';
 
       return `
-      <div class="message-item ${cls} ${readClass}" data-expires-at="${m.expiresAt || ''}" data-message-id="${m.id}">
-        ${originalPart}
-        <div class="msg-text">${safeText}</div>
-        ${renderReactions(m.reactions)}
-        <div class="msg-meta">
-          <span>${time}</span>
-          <span>${expiryInfo} ${readStatus}</span>
-          <span class="speaker-icon" title="Ascolta"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:1em; height:1em; vertical-align:middle;"><path d="M16.881 4.345A23.112 23.112 0 0 1 8.25 6H7.5a5.25 5.25 0 0 0-.88 10.427 21.593 21.593 0 0 0 1.378 3.94c.464 1.004 1.674 1.32 2.582.796l.657-.379c.88-.508 1.165-1.593.772-2.468a17.116 17.116 0 0 1-.628-1.607c1.918.258 3.76.75 5.5 1.446A21.727 21.727 0 0 0 18 11.25c0-2.414-.393-4.735-1.119-6.905ZM18.26 3.74a23.22 23.22 0 0 1 1.24 7.51 23.22 23.22 0 0 1-1.41 7.992.75.75 0 1 0 1.409.516 24.555 24.555 0 0 0 1.415-6.43 2.992 2.992 0 0 0 .836-2.078c0-.807-.319-1.54-.836-2.078a24.65 24.65 0 0 0-1.415-6.43.75.75 0 1 0-1.409.516c.059.16.116.321.17.483Z" /></svg></span>
+        <div class="message-item ${cls} ${readClass}" data-expires-at="${m.expiresAt || ''}" data-message-id="${m.id}">
+          ${originalPart}
+          <div class="msg-text">${safeText}</div>
+          ${renderReactions(m.reactions)}
+          <div class="msg-meta">
+            <span>${time}</span>
+            <span>${expiryInfo} ${readStatus}</span>
+            <span class="speaker-icon" title="Ascolta"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:1em; height:1em; vertical-align:middle;"><path d="M16.881 4.345A23.112 23.112 0 0 1 8.25 6H7.5a5.25 5.25 0 0 0-.88 10.427 21.593 21.593 0 0 0 1.378 3.94c.464 1.004 1.674 1.32 2.582.796l.657-.379c.88-.508 1.165-1.593.772-2.468a17.116 17.116 0 0 1-.628-1.607c1.918.258 3.76.75 5.5 1.446A21.727 21.727 0 0 0 18 11.25c0-2.414-.393-4.735-1.119-6.905ZM18.26 3.74a23.22 23.22 0 0 1 1.24 7.51 23.22 23.22 0 0 1-1.41 7.992.75.75 0 1 0 1.409.516 24.555 24.555 0 0 0 1.415-6.43 2.992 2.992 0 0 0 .836-2.078c0-.807-.319-1.54-.836-2.078a24.65 24.65 0 0 0-1.415-6.43.75.75 0 1 0-1.409.516c.059.16.116.321.17.483Z" /></svg></span>
+          </div>
         </div>
-      </div>
-    `;
+      `;
     })
     .join('');
+
   // Avvia decifratura automatica per le immagini ricevute
   container.querySelectorAll('.encrypted-image-wrapper').forEach(wrapper => {
     const msgId = wrapper.dataset.messageId;
@@ -3390,14 +3498,46 @@ function prependMessages(messages) {
       const readStatus = renderReadStatus(m.direction, m.read_at);
       const readClass = m.read_at ? 'read' : '';
       let content = '';
-      if (m.type === 'voice_note') {
+      if (m.type === 'image') {
+        if (m.direction === 'sent') {
+          const cached = sentImageCache.get(m.id);
+          if (cached) {
+            content = `<img src="${escapeHtml(cached)}" class="message-image" alt="${t('lightbox_image_alt')}" />`;
+          } else {
+            content = t('image_sent');
+          }
+        } else {
+          // Ricevuto: usa encryptedPayload se disponibile
+          if (m.encryptedPayload) {
+            receivedImageCache.set(m.id, m.encryptedPayload);
+            imageContent = `
+              <div class="encrypted-image-wrapper" data-message-id="${m.id}">
+                <img src="" alt="${t('lightbox_image_alt')}" class="message-image" style="display:none;" />
+                <div class="spinner"></div>
+              </div>`;
+          } else if (m.file_key) {
+            // retrocompatibilità con vecchi messaggi in chiaro
+            receivedImageCache.set(m.id, m.file_key);
+            imageContent = `
+              <div class="encrypted-image-wrapper" data-message-id="${m.id}">
+                <img src="" alt="${t('lightbox_image_alt')}" class="message-image" style="display:none;" />
+                <div class="spinner"></div>
+              </div>`;
+          } else {
+            imageContent = t('image_generic');
+          }
+        }
+      } else if (m.type === 'voice_note') {
         if (m.direction === 'sent') {
           const cached = sentAudioCache.get(m.id);
           content = cached
             ? `<audio controls src="${escapeHtml(cached)}" style="max-width:100%;height:36px;"></audio>`
             : t('voice_note_sent');
         } else {
-          content = `<span class="voice-note-play" data-message-id="${m.id}">${t('voice_note_listen')}</span>`;
+          if (m.encryptedPayload) {
+            receivedAudioCache.set(m.id, m.encryptedPayload);
+          }
+          Content = `<span class="voice-note-play" data-message-id="${m.id}">${t('voice_note_listen')}</span>`;
         }
       } else if (m.type === 'video') {
         if (m.direction === 'sent') {
@@ -3421,17 +3561,20 @@ function prependMessages(messages) {
             }
           }
         } else {
-          lruSet(receivedVideoCache, m.id, m.video_data, 5);
-            content = `
-              <div class="video-thumbnail-wrapper" data-message-id="${m.id}">
-                <img src="" alt="Video thumbnail" style="display:none;" />
-                <div class="play-overlay">
-                  <svg viewBox="0 0 48 48" width="36" height="36">
-                    <circle cx="24" cy="24" r="22" fill="rgba(var(--shadow-dark-rgb), 0.45)" stroke="var(--text)" stroke-width="1.5"/>
-                    <polygon points="19,15 19,33 33,24" fill="var(--text)"/>
-                  </svg>
-                </div>
-              </div>`;
+          // Ricevuto: salva l'encryptedPayload nella cache
+          if (m.encryptedPayload) {
+            lruSet(receivedVideoCache, m.id, m.encryptedPayload, 5);
+          }
+          content = `
+            <div class="video-thumbnail-wrapper" data-message-id="${m.id}">
+              <img alt="Video thumbnail" style="display:none;" />
+              <div class="play-overlay">
+                <svg viewBox="0 0 48 48" width="36" height="36">
+                  <circle cx="24" cy="24" r="22" fill="rgba(var(--shadow-dark-rgb), 0.45)" stroke="var(--text)" stroke-width="1.5"/>
+                  <polygon points="19,15 19,33 33,24" fill="var(--text)"/>
+                </svg>
+              </div>
+            </div>`;
         }
       } else {
         let displayText;
@@ -3469,10 +3612,14 @@ function prependMessages(messages) {
     .join('');
   console.log('PREPEND MESSAGES HTML LENGTH:', html.length);
   container.insertAdjacentHTML('afterbegin', html);
-  // Carica le thumbnail per i video prependuti
+  // Carica le thumbnail per i video prependuti e decifra le immagini
   container.querySelectorAll('.video-thumbnail-wrapper').forEach(wrapper => {
     const msgId = wrapper.dataset.messageId;
     if (msgId) loadVideoThumbnail(msgId);
+  });
+  container.querySelectorAll('.encrypted-image-wrapper').forEach(wrapper => {
+    const msgId = wrapper.dataset.messageId;
+    if (msgId) decryptAndShowImage(msgId);
   });
   const newHeight = container.scrollHeight;
   container.scrollTop = newHeight - oldHeight;
@@ -3688,7 +3835,6 @@ async function sendImageMessage(imageBase64, target = null) {
     const groupId = target.groupId;
     const members = target.members;
     if (!groupId || members.length === 0) return;
-    // Controllo per guest in gruppo multilingua
     if (currentUser && !currentUser.has_api_key) {
       const memberLanguages = await Promise.all([currentUser.language_code, ...members.map(m => fetchUserLanguage(m))]);
       const uniqueLangs = new Set(memberLanguages);
@@ -3698,30 +3844,28 @@ async function sendImageMessage(imageBase64, target = null) {
       }
     }
     checkMediaExpiryWarning();
+    
+    // Converti base64 in blob, cifra e carica
+    const blob = base64ToBlob(imageBase64, 'image/jpeg');
+    const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(blob);
+    const mimeType = blob.type;
+    const { uploadUrl, fileKey } = await getPresignedUploadUrl('image', mimeType);
+    await fetch(uploadUrl, { method: 'PUT', body: encryptedBlob, headers: { 'Content-Type': mimeType } });
+    
+    // Prepara bigliettino e cifra per ogni membro
+    const plainPayload = { fileKey, iv: ivBase64, key: keyBase64 };
     const encryptedPayload = {};
     for (const memberId of members) {
       if (memberId === currentUser.id) continue;
-      const pubKeyJwk = await fetchContactPublicKey(memberId);
-      if (!pubKeyJwk) {
-        alert(t('error_missing_public_key', { memberId }));
-        return;
-      }
-      const recipientPubKey = await importPublicKey(pubKeyJwk);
-      if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
-      if (!ecdhPrivateKey) {
-        alert(t('error_private_key_missing'));
-        return;
-      }
-      encryptedPayload[memberId] = await encryptMessage(
-        imageBase64,
-        ecdhPrivateKey,
-        recipientPubKey
-      );
+      const memberPubKeyStr = await fetchContactPublicKey(memberId);
+      if (!memberPubKeyStr) continue;
+      const memberPubKey = await importPublicKey(memberPubKeyStr);
+      const encrypted = await encryptMessage(JSON.stringify(plainPayload), ecdhPrivateKey, memberPubKey);
+      encryptedPayload[memberId] = encrypted;
     }
     const messageId = 'gmsg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     socket.emit('group_message', { groupId, encryptedPayload, messageId, type: 'image' });
 
-    // Salva in cache e mostra nel contenitore del gruppo
     sentImageCache.set(messageId, imageBase64);
     displayImageMessage('sent', messageId, null, 'group-messages-list');
     return;
@@ -3738,7 +3882,15 @@ async function sendImageMessage(imageBase64, target = null) {
   if (ephemeralMode) {
     const recipientPubKey = await prepareEphemeralPayload(currentChatContactId);
     if (!recipientPubKey) return;
-    const encryptedPayload = await encryptMessage(imageBase64, ecdhPrivateKey, recipientPubKey);
+    
+    const blob = base64ToBlob(imageBase64, 'image/jpeg');
+    const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(blob);
+    const mimeType = blob.type;
+    const { uploadUrl, fileKey } = await getPresignedUploadUrl('image', mimeType);
+    await fetch(uploadUrl, { method: 'PUT', body: encryptedBlob, headers: { 'Content-Type': mimeType } });
+    
+    const plainPayload = { fileKey, iv: ivBase64, key: keyBase64 };
+    const encryptedPayload = await encryptMessage(JSON.stringify(plainPayload), ecdhPrivateKey, recipientPubKey);
     const tempId = 'eph_' + Date.now();
     socket.emit('ephemeral_message', {
       recipientId: currentChatContactId,
@@ -3761,9 +3913,30 @@ async function sendImageMessage(imageBase64, target = null) {
       alert(t('error_private_key_missing'));
       return;
     }
+    
+    // Converti base64 in blob e cifralo prima dell'upload
+    const blob = base64ToBlob(imageBase64, 'image/jpeg');
+    const mimeType = blob.type;
+    
+    // Cifra il blob con chiave simmetrica usa‑e‑getta
+    const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(blob);
+    
+    // Carica il blob già cifrato su MinIO
+    const { uploadUrl, fileKey } = await getPresignedUploadUrl('image', mimeType);
+    console.log('uploadUrl (singolo):', uploadUrl);
+    await fetch(uploadUrl, { method: 'PUT', body: encryptedBlob, headers: { 'Content-Type': mimeType } });
+    
+    // Prepara il bigliettino con le informazioni per decifrare
+    const plainPayload = {
+      fileKey,
+      iv: ivBase64,
+      key: keyBase64
+    };
+    
+    // Chiudi il bigliettino con la chiave pubblica del destinatario
     const recipientPubKey = await importPublicKey(contactPublicKey);
-    const encryptedPayload = await encryptMessage(imageBase64, ecdhPrivateKey, recipientPubKey);
-
+    const encryptedPayload = await encryptMessage(JSON.stringify(plainPayload), ecdhPrivateKey, recipientPubKey);
+    console.log('encryptedPayload type:', typeof encryptedPayload, encryptedPayload);
     const body = { recipientId: currentChatContactId, encryptedPayload };
     const res = await apiCall('/conversation/send-image', {
       method: 'POST',
@@ -3778,6 +3951,7 @@ async function sendImageMessage(imageBase64, target = null) {
     sentImageCache.set(data.messageId, imageBase64);
     displayImageMessage('sent', data.messageId, data.expiresAt);
   } catch (err) {
+    console.error(err);
     showNetworkError('error_network_image');
   }
 }
@@ -3791,16 +3965,20 @@ async function sendVideoMessage(videoBase64, target = null) {
     console.warn('Thumbnail non generata, si procede senza', e);
   }
 
-  // 2. Funzione helper per cifrare entrambi i campi e restituire payload JSON
-  const encryptVideoPayload = async (recipientPubKey) => {
-    if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
-    if (!ecdhPrivateKey) throw new Error('PRIVATE_KEY_MISSING');
-    const encryptedVideo = await encryptMessage(videoBase64, ecdhPrivateKey, recipientPubKey);
-    let encryptedThumbnail = null;
+  // 2. Funzione helper per caricare video e thumbnail e restituire fileKeys
+  const uploadVideoAndThumb = async () => {
+    const videoBlob = base64ToBlob(videoBase64, 'video/mp4');
+    const { uploadUrl: videoUploadUrl, fileKey: videoFileKey } = await getPresignedUploadUrl('video', 'video/mp4');
+    await fetch(videoUploadUrl, { method: 'PUT', body: videoBlob, headers: { 'Content-Type': 'video/mp4' } });
+    
+    let thumbnailFileKey = null;
     if (thumbnailBase64) {
-      encryptedThumbnail = await encryptMessage(thumbnailBase64, ecdhPrivateKey, recipientPubKey);
+      const thumbBlob = base64ToBlob(thumbnailBase64, 'image/jpeg');
+      const { uploadUrl: thumbUploadUrl, fileKey: thumbKey } = await getPresignedUploadUrl('image', 'image/jpeg');
+      await fetch(thumbUploadUrl, { method: 'PUT', body: thumbBlob, headers: { 'Content-Type': 'image/jpeg' } });
+      thumbnailFileKey = thumbKey;
     }
-    return { video: encryptedVideo, thumbnail: encryptedThumbnail };
+    return { videoFileKey, thumbnailFileKey };
   };
 
   // ─────────── INVIO IN GRUPPO ───────────
@@ -3808,7 +3986,6 @@ async function sendVideoMessage(videoBase64, target = null) {
     const groupId = target.groupId;
     const members = target.members;
     if (!groupId || members.length === 0) return;
-    // Controllo per guest in gruppo multilingua
     if (currentUser && !currentUser.has_api_key) {
       const memberLanguages = await Promise.all([currentUser.language_code, ...members.map(m => fetchUserLanguage(m))]);
       const uniqueLangs = new Set(memberLanguages);
@@ -3818,39 +3995,43 @@ async function sendVideoMessage(videoBase64, target = null) {
       }
     }
     checkMediaExpiryWarning();
+
+    // Cifra il video e la thumbnail
+    const videoBlob = base64ToBlob(videoBase64, 'video/mp4');
+    const { encryptedBlob: encryptedVideo, keyBase64: videoKey, ivBase64: videoIv } = await encryptMediaBlob(videoBlob);
+    const { uploadUrl: videoUploadUrl, fileKey: videoFileKey } = await getPresignedUploadUrl('video', 'video/mp4');
+    await fetch(videoUploadUrl, { method: 'PUT', body: encryptedVideo, headers: { 'Content-Type': 'video/mp4' } });
+
+    let thumbnailFileKey = null, thumbnailKey = null, thumbnailIv = null;
+    if (thumbnailBase64) {
+      const thumbBlob = base64ToBlob(thumbnailBase64, 'image/jpeg');
+      const { encryptedBlob: encryptedThumb, keyBase64: tKey, ivBase64: tIv } = await encryptMediaBlob(thumbBlob);
+      const { uploadUrl: thumbUploadUrl, fileKey: tFileKey } = await getPresignedUploadUrl('image', 'image/jpeg');
+      await fetch(thumbUploadUrl, { method: 'PUT', body: encryptedThumb, headers: { 'Content-Type': 'image/jpeg' } });
+      thumbnailFileKey = tFileKey;
+      thumbnailKey = tKey;
+      thumbnailIv = tIv;
+    }
+
+    const plainPayload = {
+      videoFileKey, videoIv, videoKey,
+      thumbnailFileKey, thumbnailIv, thumbnailKey
+    };
+
     const encryptedPayload = {};
     for (const memberId of members) {
       if (memberId === currentUser.id) continue;
-      const pubKeyJwk = await fetchContactPublicKey(memberId);
-      if (!pubKeyJwk) {
-        alert(t('error_missing_public_key', { memberId }));
-        return;
-      }
-      const recipientPubKey = await importPublicKey(pubKeyJwk);
-      if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
-      if (!ecdhPrivateKey) {
-        alert(t('error_private_key_missing'));
-        return;
-      }
-      encryptedPayload[memberId] = await encryptVideoPayload(recipientPubKey);
+      const memberPubKeyStr = await fetchContactPublicKey(memberId);
+      if (!memberPubKeyStr) continue;
+      const memberPubKey = await importPublicKey(memberPubKeyStr);
+      const encrypted = await encryptMessage(JSON.stringify(plainPayload), ecdhPrivateKey, memberPubKey);
+      encryptedPayload[memberId] = encrypted;
     }
 
     const messageId = 'gmsg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-
-    console.log('📤 [TEST1] emit group_message video:', {
-      messageId,
-      groupId,
-      type: 'video',
-      encryptedPayloadKeys: Object.keys(encryptedPayload),
-      socketConnected: socket?.connected,
-    });
-
     socket.emit('group_message', { groupId, encryptedPayload, messageId, type: 'video' });
 
-    // Salva in cache e mostra nel contenitore del gruppo
     sentVideoCache.set(messageId, videoBase64);
-    // Opzionalmente potremmo salvare anche la thumbnail in chiaro per il mittente,
-    // ma per ora non serve perché il mittente vede ancora il player video.
     if (thumbnailBase64) {
       sessionStorage.setItem('thumb_' + messageId, thumbnailBase64);
     }
@@ -3858,20 +4039,40 @@ async function sendVideoMessage(videoBase64, target = null) {
     return;
   }
 
-  // ─────────── INVIO SINGOLO (codice originale) ───────────
+  // ─────────── INVIO SINGOLO ───────────
   if (!currentChatContactId) return;
   checkMediaExpiryWarning();
-  // Controllo per guest con lingua diversa (chat singola)
   if (currentUser && !currentUser.has_api_key && currentChatContactLanguage && currentChatContactLanguage !== currentUser.language_code) {
     alert(t('error_guest_diff_language'));
     return;
   }
+  
   if (ephemeralMode) {
     const recipientPubKey = await prepareEphemeralPayload(currentChatContactId);
     if (!recipientPubKey) return;
-    const encryptedPayload = await encryptVideoPayload(recipientPubKey);
+
+    const videoBlob = base64ToBlob(videoBase64, 'video/mp4');
+    const { encryptedBlob: encryptedVideo, keyBase64: videoKey, ivBase64: videoIv } = await encryptMediaBlob(videoBlob);
+    const { uploadUrl: videoUploadUrl, fileKey: videoFileKey } = await getPresignedUploadUrl('video', 'video/mp4');
+    await fetch(videoUploadUrl, { method: 'PUT', body: encryptedVideo, headers: { 'Content-Type': 'video/mp4' } });
+
+    let thumbnailFileKey = null, thumbnailKey = null, thumbnailIv = null;
+    if (thumbnailBase64) {
+      const thumbBlob = base64ToBlob(thumbnailBase64, 'image/jpeg');
+      const { encryptedBlob: encryptedThumb, keyBase64: tKey, ivBase64: tIv } = await encryptMediaBlob(thumbBlob);
+      const { uploadUrl: thumbUploadUrl, fileKey: tFileKey } = await getPresignedUploadUrl('image', 'image/jpeg');
+      await fetch(thumbUploadUrl, { method: 'PUT', body: encryptedThumb, headers: { 'Content-Type': 'image/jpeg' } });
+      thumbnailFileKey = tFileKey;
+      thumbnailKey = tKey;
+      thumbnailIv = tIv;
+    }
+
+    const plainPayload = {
+      videoFileKey, videoIv, videoKey,
+      thumbnailFileKey, thumbnailIv, thumbnailKey
+    };
+    const encryptedPayload = await encryptMessage(JSON.stringify(plainPayload), ecdhPrivateKey, recipientPubKey);
     const tempId = 'eph_' + Date.now();
-    console.log('📤 [EFFEMERO-MITTENTE] emit ephemeral_message video, size:', videoBase64.length);
     socket.emit('ephemeral_message', {
       recipientId: currentChatContactId,
       encryptedPayload,
@@ -3886,28 +4087,49 @@ async function sendVideoMessage(videoBase64, target = null) {
   }
 
   try {
-    // Genera un ID temporaneo per associare la thumbnail prima di conoscere il messageId
-    const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    if (thumbnailBase64) {
-      sessionStorage.setItem('thumb_' + tempId, thumbnailBase64);
-    }
-
     const contactPublicKey = await fetchContactPublicKey(currentChatContactId);
     if (!contactPublicKey) {
       alert(t('error_text_e2e_required'));
-      sessionStorage.removeItem('thumb_' + tempId);
       return;
     }
     if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
     if (!ecdhPrivateKey) {
       alert(t('error_private_key_missing'));
-      sessionStorage.removeItem('thumb_' + tempId);
       return;
     }
-    const recipientPubKey = await importPublicKey(contactPublicKey);
-    const encryptedPayload = await encryptVideoPayload(recipientPubKey);
 
-    const body = { recipientId: currentChatContactId, encryptedPayload, clientTempId: tempId };
+    // Cifra i blob video e thumbnail
+    const videoBlob = base64ToBlob(videoBase64, 'video/mp4');
+    const { encryptedBlob: encryptedVideo, keyBase64: videoKey, ivBase64: videoIv } = await encryptMediaBlob(videoBlob);
+    const { uploadUrl: videoUploadUrl, fileKey: videoFileKey } = await getPresignedUploadUrl('video', 'video/mp4');
+    await fetch(videoUploadUrl, { method: 'PUT', body: encryptedVideo, headers: { 'Content-Type': 'video/mp4' } });
+
+    let thumbnailFileKey = null, thumbnailKey = null, thumbnailIv = null;
+    if (thumbnailBase64) {
+      const thumbBlob = base64ToBlob(thumbnailBase64, 'image/jpeg');
+      const { encryptedBlob: encryptedThumb, keyBase64: tKey, ivBase64: tIv } = await encryptMediaBlob(thumbBlob);
+      const { uploadUrl: thumbUploadUrl, fileKey: tFileKey } = await getPresignedUploadUrl('image', 'image/jpeg');
+      await fetch(thumbUploadUrl, { method: 'PUT', body: encryptedThumb, headers: { 'Content-Type': 'image/jpeg' } });
+      thumbnailFileKey = tFileKey;
+      thumbnailKey = tKey;
+      thumbnailIv = tIv;
+    }
+
+    // Prepara il bigliettino
+    const plainPayload = {
+      videoFileKey,
+      videoIv,
+      videoKey,
+      thumbnailFileKey,
+      thumbnailIv,
+      thumbnailKey
+    };
+
+    // Cifra il bigliettino con la chiave pubblica del destinatario
+    const recipientPubKey = await importPublicKey(contactPublicKey);
+    const encryptedPayload = await encryptMessage(JSON.stringify(plainPayload), ecdhPrivateKey, recipientPubKey);
+
+    const body = { recipientId: currentChatContactId, encryptedPayload };
     const res = await apiCall('/conversation/send-video', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -3915,23 +4137,18 @@ async function sendVideoMessage(videoBase64, target = null) {
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       alert(errData.error || t('error_video_send_failed'));
-      sessionStorage.removeItem('thumb_' + tempId);
       return;
     }
     const data = await res.json();
+
+    // Salva in cache locale per il mittente
     sentVideoCache.set(data.messageId, videoBase64);
-    // Trasferisci la thumbnail dalla chiave temporanea a quella definitiva
     if (thumbnailBase64) {
-      const tempKey = 'thumb_' + tempId;
-      const permKey = 'thumb_' + data.messageId;
-      const saved = sessionStorage.getItem(tempKey);
-      if (saved) {
-        sessionStorage.setItem(permKey, saved);
-        sessionStorage.removeItem(tempKey);
-      }
+      sessionStorage.setItem('thumb_' + data.messageId, thumbnailBase64);
     }
     displayVideoMessage('sent', data.messageId, data.expiresAt);
   } catch (err) {
+    console.error(err);
     showNetworkError('error_network_video');
   }
 }
@@ -3942,31 +4159,119 @@ async function decryptAndShowImage(messageId) {
   const img = wrapper.querySelector('img');
   if (!img) return;
 
-  const data = receivedImageCache.get(messageId);
-  if (!data) return;
+  // Ottieni il payload cifrato dal messaggio (dovrà essere passato come attributo o preso dalla cache)
+  // Per ora prendiamo il fileKey dalla cache (vecchio sistema), ma dopo useremo encryptedPayload
+  const encryptedPayload = receivedImageCache.get(messageId);
+  if (!encryptedPayload) return;
 
   try {
-    let imageUrl;
-    if (typeof data === 'string' && data.startsWith('data:image/')) {
-      // già in chiaro
-      imageUrl = data;
-    } else {
-      const encryptedPayload = JSON.parse(data);
-      if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
-      if (!ecdhPrivateKey) return;
-      imageUrl = await decryptMessage(encryptedPayload, ecdhPrivateKey);
-      // Aggiorna cache con la versione decifrata
-      receivedImageCache.set(messageId, imageUrl);
+    if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
+    if (!ecdhPrivateKey) {
+      console.error('Chiave privata mancante');
+      return;
     }
-    // Mostra l'immagine e nasconde lo spinner
-    img.src = imageUrl;
+
+    // Decifra il bigliettino
+    const decryptedPayload = await decryptMessage(encryptedPayload, ecdhPrivateKey);
+    const { fileKey, iv, key } = JSON.parse(decryptedPayload);
+
+    // Scarica il blob cifrato da MinIO
+    const res = await apiCall(`/media/${encodeURIComponent(fileKey)}`);
+    if (!res.ok) throw new Error('Errore nel recupero URL');
+    const { url } = await res.json();
+    const blobRes = await fetch(url);
+    if (!blobRes.ok) throw new Error('Download blob fallito');
+    const encryptedBuffer = await blobRes.arrayBuffer();
+
+    // Decifra il blob
+    const ivArray = base64ToArrayBuffer(iv);
+    const keyArray = base64ToArrayBuffer(key);
+    const cryptoKey = await crypto.subtle.importKey('raw', keyArray, { name: 'AES-GCM' }, false, ['decrypt']);
+    const decryptedBuffer = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivArray }, cryptoKey, encryptedBuffer);
+    const blob = new Blob([decryptedBuffer], { type: 'image/jpeg' });
+    const objectUrl = URL.createObjectURL(blob);
+    img.src = objectUrl;
     img.style.display = 'block';
     const spinner = wrapper.querySelector('.spinner');
     if (spinner) spinner.style.display = 'none';
   } catch (e) {
-    console.error('Decifratura immagine fallita', e);
+    console.error('Visualizzazione immagine fallita', e);
     const spinner = wrapper.querySelector('.spinner');
     if (spinner) spinner.textContent = 'Errore';
+  }
+}
+
+async function loadVideoThumbnail(messageId) {
+  const wrapper = document.querySelector(`.video-thumbnail-wrapper[data-message-id="${messageId}"]`);
+  if (!wrapper) return;
+  const img = wrapper.querySelector('img');
+  if (!img) return;
+
+  const encryptedPayload = lruGet(receivedVideoCache, messageId);
+  if (!encryptedPayload) return;
+
+  try {
+    if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
+    if (!ecdhPrivateKey) throw new Error('Chiave privata mancante');
+
+    // Decifra il bigliettino
+    const decrypted = await decryptMessage(encryptedPayload, ecdhPrivateKey);
+    const payload = JSON.parse(decrypted);
+    // payload: { videoFileKey, videoIv, videoKey, thumbnailFileKey, thumbnailIv, thumbnailKey }
+
+    // Salva le chiavi per la riproduzione successiva
+    wrapper.dataset.videoFileKey = payload.videoFileKey;
+    wrapper.dataset.videoIv = payload.videoIv;
+    wrapper.dataset.videoKey = payload.videoKey;
+
+    // Se c'è thumbnail, decifrala e mostrala
+    if (payload.thumbnailFileKey && payload.thumbnailKey && payload.thumbnailIv) {
+      const res = await apiCall(`/media/${encodeURIComponent(payload.thumbnailFileKey)}`);
+      if (!res.ok) throw new Error('Errore recupero thumbnail cifrata');
+      const { url } = await res.json();
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('Download thumbnail fallito');
+      const encryptedBuffer = await resp.arrayBuffer();
+      const blob = await decryptMediaBlob(encryptedBuffer, payload.thumbnailKey, payload.thumbnailIv, 'image/jpeg');
+      img.src = URL.createObjectURL(blob);
+      img.style.display = 'block';
+    }
+  } catch (e) {
+    console.error('Caricamento thumbnail video fallito', e);
+  }
+}
+
+async function playVoiceNote(messageId) {
+  const encryptedPayload = receivedAudioCache.get(messageId);
+  if (!encryptedPayload) return;
+
+  try {
+    if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
+    if (!ecdhPrivateKey) {
+      console.error('Chiave privata mancante');
+      return;
+    }
+
+    // Decifra il bigliettino
+    const decryptedPayload = await decryptMessage(encryptedPayload, ecdhPrivateKey);
+    const { fileKey, iv, key } = JSON.parse(decryptedPayload);
+
+    // Scarica il blob cifrato da MinIO
+    const res = await apiCall(`/media/${encodeURIComponent(fileKey)}`);
+    if (!res.ok) throw new Error('Errore recupero URL audio');
+    const { url } = await res.json();
+    const audioResp = await fetch(url);
+    if (!audioResp.ok) throw new Error('Download audio fallito');
+    const encryptedBuffer = await audioResp.arrayBuffer();
+
+    // Decifra il blob
+    const blob = await decryptMediaBlob(encryptedBuffer, key, iv, 'audio/webm');
+    const audioUrl = URL.createObjectURL(blob);
+
+    const audio = new Audio(audioUrl);
+    audio.play().catch(e => console.warn('Autoplay bloccato:', e));
+  } catch (e) {
+    console.error('Riproduzione nota vocale fallita', e);
   }
 }
 
@@ -4004,7 +4309,7 @@ function displayVideoMessage(
           // Ricevuto: crea wrapper per thumbnail (l'immagine verrà caricata in modo asincrono)
       content = `
         <div class="video-thumbnail-wrapper" data-message-id="${messageId}">
-          <img src="" alt="Video thumbnail" style="display:none;" />
+          <img alt="Video thumbnail" style="display:none;" />
           <div class="play-overlay">
             <svg viewBox="0 0 48 48" width="36" height="36">
               <circle cx="24" cy="24" r="22" fill="rgba(var(--shadow-dark-rgb), 0.45)" stroke="var(--text)" stroke-width="1.5"/>
@@ -4032,63 +4337,6 @@ function displayVideoMessage(
   // Per i messaggi ricevuti, avvia il caricamento asincrono della thumbnail
   if (direction === 'received') {
     loadVideoThumbnail(messageId);
-  }
-}
-
-/**
- * Carica in modo asincrono la thumbnail di un video ricevuto e la mostra nel wrapper.
- * Se la thumbnail non è disponibile, mostra un fallback con sfondo scuro.
- * @param {string} messageId 
- */
-async function loadVideoThumbnail(messageId) {
-  const wrapper = document.querySelector(`.video-thumbnail-wrapper[data-message-id="${messageId}"]`);
-  if (!wrapper) return;
-
-  const img = wrapper.querySelector('img');
-  if (!img) return;
-
-  // Se già in cache, mostra subito
-  const cachedThumb = lruGet(receivedVideoThumbnailCache, messageId);
-  if (cachedThumb) {
-    img.src = cachedThumb;
-    img.style.display = 'block';
-    return;
-  }
-
-  // Recupera il payload cifrato (oggetto {video, thumbnail})
-  const data = lruGet(receivedVideoCache, messageId);
-  if (!data) return;
-
-  try {
-    let payload;
-    try {
-      payload = JSON.parse(data);
-    } catch {
-      // Vecchio formato? Non dovrebbe più capitare, ma gestiamo
-      console.warn('Payload video non è un JSON oggetto per', messageId);
-      return;
-    }
-
-    if (payload.thumbnail) {
-      // Decifra la thumbnail
-      if (!ecdhPrivateKey) await loadPrivateKeyIntoMemory();
-      if (!ecdhPrivateKey) return;
-      const decryptedThumb = await decryptMessage(payload.thumbnail, ecdhPrivateKey);
-      // Salva in cache
-      lruSet(receivedVideoThumbnailCache, messageId, decryptedThumb, 5);
-      // Mostra l'immagine
-      img.src = decryptedThumb;
-      img.style.display = 'block';
-    } else {
-      // Nessuna thumbnail generata: mostra un'icona di fallback
-      wrapper.classList.add('no-thumbnail');
-      const overlay = wrapper.querySelector('.play-overlay');
-      if (overlay) overlay.style.background = 'rgba(0,0,0,0.7)';
-    }
-  } catch (e) {
-    console.error('Errore caricamento thumbnail per', messageId, e);
-    // Fallback silenzioso: rimane l'overlay senza immagine
-    wrapper.classList.add('no-thumbnail');
   }
 }
 
@@ -6661,3 +6909,17 @@ document.getElementById('leave-group-btn').addEventListener('click', () => {
     leaveGroupChatUI();
   }
 });
+
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}

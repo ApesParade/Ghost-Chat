@@ -92,19 +92,20 @@ async function handleMessage({ id, action, payload }) {
         const encoded = new TextEncoder().encode(text);
         const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, encoded);
         const ephemeralJwk = await crypto.subtle.exportKey('jwk', ephemeral.publicKey);
-        result = {
+        result = JSON.stringify({
           ciphertext: arrayBufferToBase64(ciphertext),
           iv: arrayBufferToBase64(iv.buffer),
           salt: arrayBufferToBase64(salt.buffer),
           ephemeralPublicKey: JSON.stringify(ephemeralJwk),
-        };
+        });
         break;
       }
       case 'decryptMessage': {
         const { encryptedPayload, myPrivateKeyId } = payload;
         const myPriv = keyStore.get(myPrivateKeyId);
         if (!myPriv) throw new Error('Chiave privata mancante');
-        const { ciphertext, iv, salt, ephemeralPublicKey } = encryptedPayload;
+        let parsedPayload = typeof encryptedPayload === 'string' ? JSON.parse(encryptedPayload) : encryptedPayload;
+        const { ciphertext, iv, salt, ephemeralPublicKey } = parsedPayload;
         const ephemeralPub = await crypto.subtle.importKey('jwk', JSON.parse(ephemeralPublicKey), ECDH_ALGORITHM, true, []);
         const sharedSecret = await crypto.subtle.deriveBits(
           { name: 'ECDH', public: ephemeralPub },
@@ -137,19 +138,20 @@ async function handleMessage({ id, action, payload }) {
         const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
         const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, audioBuffer);
         const ephemeralJwk = await crypto.subtle.exportKey('jwk', ephemeral.publicKey);
-        result = {
+        result = JSON.stringify({
           ciphertext: arrayBufferToBase64(ciphertext),
           iv: arrayBufferToBase64(iv.buffer),
           salt: arrayBufferToBase64(salt.buffer),
           ephemeralPublicKey: JSON.stringify(ephemeralJwk),
-        };
+        });
         break;
       }
       case 'decryptAudio': {
         const { encryptedPayload, myPrivateKeyId } = payload;
         const myPriv = keyStore.get(myPrivateKeyId);
         if (!myPriv) throw new Error('Chiave privata mancante');
-        const { ciphertext, iv, salt, ephemeralPublicKey } = encryptedPayload;
+        const parsedPayload = JSON.parse(encryptedPayload);
+        const { ciphertext, iv, salt, ephemeralPublicKey } = parsedPayload;
         const ephemeralPub = await crypto.subtle.importKey('jwk', JSON.parse(ephemeralPublicKey), ECDH_ALGORITHM, true, []);
         const sharedSecret = await crypto.subtle.deriveBits(
           { name: 'ECDH', public: ephemeralPub },

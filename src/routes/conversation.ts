@@ -130,7 +130,10 @@ router.post('/send', verifyToken, upload.single('audio'), async (req: Request, r
       } catch (e: any) {
         console.error('[PUSH ERROR]', e.message);
       }
-    } else if (!sendPush) {
+    }
+
+    // Invia sempre evento socket se il destinatario è online
+    if (io.sockets.adapter.rooms.get(`user_${recipientId}`)?.size > 0) {
       io.to(`user_${recipientId}`).emit('new_message', {
         senderId: userId,
         senderName: sender.username,
@@ -140,6 +143,7 @@ router.post('/send', verifyToken, upload.single('audio'), async (req: Request, r
         messageId: message.id,
         expiresAt: null,
         is_encrypted: false,
+        type: 'audio',
       });
     }
 
@@ -207,7 +211,7 @@ router.post('/send-text', verifyToken, async (req: Request, res: Response) => {
       encryptedPayload = req.body.encryptedPayload;
       result = {
         translated: '', // il client decifrerà e tradurrà se necessario
-        original: JSON.stringify(encryptedPayload),
+        original: encryptedPayload,
       };
     } else if (text) {
       // Fallback per vecchi messaggi in chiaro (non dovrebbe più accadere)
@@ -307,11 +311,10 @@ router.post('/send-text', verifyToken, async (req: Request, res: Response) => {
       } catch (e: any) {
         console.error('[PUSH ERROR]', e.message);
       }
-    } else if (!shouldPush) {
-      // Invia solo evento socket (chat non attiva o pagina visibile)
-      const estimatedExpiresAt = expiryHours
-        ? new Date(Date.now() + expiryHours * 3600000).toISOString()
-        : null;
+    }
+
+    // Invia sempre evento socket se il destinatario è online
+    if (io.sockets.adapter.rooms.get(`user_${recipientId}`)?.size > 0) {
       io.to(`user_${recipientId}`).emit('new_message', {
         senderId: userId,
         senderName: sender.username,
@@ -439,9 +442,10 @@ router.get('/messages/:contact_id', verifyToken, async (req: Request, res: Respo
       expiresAt: m.expires_at,
       read_at: m.read_at,
       type: m.type || 'text',
-      audio_data: m.audio_data,
-      image_data: m.image_data,
-      video_data: m.video_data,
+      file_key: m.file_key,
+      video_data: m.type === 'video' ? m.video_data : undefined,
+      audio_data: m.type === 'voice_note' ? m.audio_data : undefined,
+      encryptedPayload: m.encryptedPayload,
       reactions: m.reactions,
     }));
 
@@ -546,13 +550,13 @@ router.post('/send-voice-note', verifyToken, async (req: Request, res: Response)
         sender_id: userId,
         recipient_id: recipientId,
         translated_text: '',
-        original_text: JSON.stringify(encryptedPayload),
+        original_text: null,
         original_language: sender.language_code,
         expiry_hours: expiryHours,
         expires_at: null,
         is_encrypted: true,
         type: 'voice_note',
-        audio_data: JSON.stringify(encryptedPayload),
+        encryptedPayload: req.body.encryptedPayload,
       },
     });
 
@@ -569,8 +573,6 @@ router.post('/send-voice-note', verifyToken, async (req: Request, res: Response)
         contact_chat_active: true,
       },
     });
-
-
 
     // Emetti evento socket
     const sendPush = shouldSendPush(recipientId, userId);
@@ -591,7 +593,10 @@ router.post('/send-voice-note', verifyToken, async (req: Request, res: Response)
       } catch (e: any) {
         console.error('[PUSH ERROR]', e.message);
       }
-    } else if (!sendPush) {
+    }
+
+    // Invia sempre evento socket se il destinatario è online
+    if (io.sockets.adapter.rooms.get(`user_${recipientId}`)?.size > 0) {
       io.to(`user_${recipientId}`).emit('new_message', {
         senderId: userId,
         senderName: sender.username,
@@ -602,6 +607,7 @@ router.post('/send-voice-note', verifyToken, async (req: Request, res: Response)
         expiresAt: null,
         is_encrypted: true,
         type: 'voice_note',
+        encryptedPayload: req.body.encryptedPayload,
       });
     }
 
@@ -713,9 +719,12 @@ router.post('/send-image', verifyToken, async (req: Request, res: Response) => {
         original_language: sender.language_code,
         expiry_hours: expiryHours,
         expires_at: null,
-        is_encrypted: isEncrypted,
+        is_encrypted: true,
         type: 'image',
-        image_data: imageData,
+        encryptedPayload: req.body.encryptedPayload,
+        file_key: req.body.fileKey || null, // manterremo per retrocompatibilità?
+        // NOTA: volendo possiamo già eliminare file_key e usare solo encryptedPayload
+        // ma per sicurezza teniamo file_key per ora, poi in fase 5 rimuoveremo
       },
     });
 
@@ -752,17 +761,22 @@ router.post('/send-image', verifyToken, async (req: Request, res: Response) => {
       } catch (e: any) {
         console.error('[PUSH ERROR]', e.message);
       }
-    } else if (!sendPush) {
+    }
+
+    // Invia sempre evento socket se il destinatario è online
+    if (io.sockets.adapter.rooms.get(`user_${recipientId}`)?.size > 0) {
       io.to(`user_${recipientId}`).emit('new_message', {
         senderId: userId,
         senderName: sender.username,
         translated: '',
-        original: isEncrypted ? imageData : undefined,
+        original: undefined,
         timestamp: message.created_at,
         messageId: message.id,
         expiresAt: null,
-        is_encrypted: isEncrypted,
+        is_encrypted: true,
         type: 'image',
+        encryptedPayload: req.body.encryptedPayload,
+        fileKey: req.body.fileKey || undefined, // per retrocompatibilità
       });
     }
 
@@ -785,20 +799,20 @@ router.post('/send-video', verifyToken, async (req: Request, res: Response) => {
     const encryptedPayload: any = req.body.encryptedPayload;
 
     if (!recipientId) return res.status(400).json({ error: 'Destinatario mancante' });
-    if (!encryptedPayload || typeof encryptedPayload !== 'object' || !encryptedPayload.video) {
-      return res.status(400).json({ error: 'Payload video non valido: atteso oggetto con campo "video" (e opzionalmente "thumbnail")' });
+    if (!encryptedPayload || typeof encryptedPayload !== 'string') {
+      return res.status(400).json({ error: 'Payload cifrato mancante o non valido' });
     }
 
     const sender = await prisma.user.findUnique({ where: { id: userId } });
     const recipient = await prisma.user.findUnique({ where: { id: recipientId } });
     if (!sender || !recipient) return res.status(404).json({ error: 'Utente non trovato' });
 
-    // Il payload è già un oggetto cifrato E2E, lo serializziamo per salvarlo nel DB
-    const videoData = JSON.stringify(encryptedPayload);
-    const isEncrypted = true;
-
     const conversationId = [userId, recipientId].sort().join('_');
     let expiryHours = await resolveExpiryHours(userId, recipientId);
+    const estimatedExpiresAt = expiryHours
+      ? new Date(Date.now() + expiryHours * 3600000).toISOString()
+      : null;
+
     const message = await prisma.message.create({
       data: {
         conversation_id: conversationId,
@@ -809,13 +823,13 @@ router.post('/send-video', verifyToken, async (req: Request, res: Response) => {
         original_language: sender.language_code,
         expiry_hours: expiryHours,
         expires_at: null,
-        is_encrypted: isEncrypted,
+        is_encrypted: true,
         type: 'video',
-        video_data: videoData,
+        encryptedPayload: req.body.encryptedPayload,
       },
     });
 
-    // Riattiva i flag della chat se erano stati spenti da una cancellazione precedente
+    // Riattiva i flag della chat
     await prisma.contact.updateMany({
       where: {
         OR: [
@@ -848,24 +862,28 @@ router.post('/send-video', verifyToken, async (req: Request, res: Response) => {
       } catch (e: any) {
         console.error('[PUSH ERROR]', e.message);
       }
-    } else if (!sendPush) {
+    }
+
+    if (io.sockets.adapter.rooms.get(`user_${recipientId}`)?.size > 0) {
       io.to(`user_${recipientId}`).emit('new_message', {
         senderId: userId,
         senderName: sender.username,
         translated: '',
-        original: videoData,
+        original: undefined,
         timestamp: message.created_at,
         messageId: message.id,
         expiresAt: null,
         is_encrypted: true,
         type: 'video',
+        encryptedPayload: req.body.encryptedPayload,
       });
     }
 
-    const estimatedExpiresAt = expiryHours
-      ? new Date(Date.now() + expiryHours * 3600000).toISOString()
-      : null;
-    res.json({ success: true, messageId: message.id, expiresAt: estimatedExpiresAt });
+    res.json({
+      success: true,
+      messageId: message.id,
+      expiresAt: estimatedExpiresAt,
+    });
   } catch (err: any) {
     console.error(err);
     res.status(500).json({ error: "Errore durante l'invio del video" });
